@@ -1,0 +1,1471 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AWS Console - Lambda Lab</title>
+    <meta name="description" content="Laboratorio serverless simulando la AWS Management Console." />
+    <style>
+      :root {
+        --aws-nav-bg: #232f3e;
+        --aws-nav-text: #ffffff;
+        --bg: #f2f3f3;
+        --surface: #ffffff;
+        --surface-alt: #fafafa;
+        --surface-muted: #f7f8f8;
+        --sidebar: #ffffff;
+        --sidebar-border: #eaeded;
+        --border: #d5dbdb;
+        --border-strong: #879596;
+        --text: #16191f;
+        --text-soft: #5f6b7a;
+        --link: #0073bb;
+        --accent: #ec7211;
+        --accent-hover: #eb5f07;
+        --accent-soft: #fef0e6;
+        --accent-contrast: #ffffff;
+        --success: #1d8102;
+        --danger: #d13212;
+        --focus: #0073bb;
+        --radius: 2px;
+        --shadow: 0 1px 1px 0 rgba(0, 28, 36, 0.15);
+        --font-size-base: 14px;
+        --density-gap: 1.2rem;
+      }
+
+      body.theme-aws-dark {
+        --aws-nav-bg: #192026;
+        --bg: #0f141a;
+        --surface: #16191f;
+        --surface-alt: #1b232c;
+        --surface-muted: #202934;
+        --sidebar: #16191f;
+        --sidebar-border: #39414a;
+        --border: #39414a;
+        --border-strong: #5f6b7a;
+        --text: #f2f3f3;
+        --text-soft: #b6bec9;
+        --link: #33a5ff;
+        --accent-soft: rgba(236, 114, 17, 0.15);
+        --shadow: none;
+      }
+
+      body.theme-aws-contrast {
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --surface-alt: #f4f4f4;
+        --surface-muted: #ffffff;
+        --sidebar: #ffffff;
+        --border: #111111;
+        --border-strong: #111111;
+        --text: #111111;
+        --link: #005fcc;
+        --shadow: none;
+      }
+
+      body.scale-compact { --font-size-base: 13px; }
+      body.scale-large { --font-size-base: 16px; }
+      body.density-compact { --density-gap: 0.8rem; }
+
+      * { box-sizing: border-box; }
+      
+      html, body { 
+        margin: 0; 
+        padding: 0; 
+        height: 100vh; 
+        overflow: hidden; 
+        display: flex; 
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Helvetica Neue", Roboto, Arial, sans-serif;
+        font-size: var(--font-size-base);
+      }
+
+      body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+
+      button, input, select, textarea { font: inherit; color: inherit; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+        outline: 2px solid var(--focus); outline-offset: 1px;
+      }
+
+      .aws-navbar {
+        height: 40px;
+        background-color: var(--aws-nav-bg);
+        color: var(--aws-nav-text);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        flex-shrink: 0;
+        font-size: 13px;
+      }
+      .aws-nav-left { display: flex; align-items: center; gap: 12px; font-weight: 700; }
+      .aws-logo-box { background: #ff9900; color: #232f3e; padding: 2px 6px; border-radius: 2px; font-weight: 900; }
+      .aws-nav-right { display: flex; gap: 16px; align-items: center; color: #ccc; }
+
+      .aws-app-body {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .aws-sidebar {
+        width: 250px;
+        background: var(--sidebar);
+        border-right: 1px solid var(--sidebar-border);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+      }
+
+      .sidebar-section { padding: 16px; border-bottom: 1px solid var(--sidebar-border); }
+      .sidebar-title { font-size: 16px; font-weight: 700; margin: 0 0 12px 0; }
+      .sidebar-nav { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+      
+      .nav-item {
+        padding: 8px 12px;
+        border-radius: var(--radius);
+        cursor: pointer;
+        color: var(--text);
+        border-left: 3px solid transparent;
+        transition: background 0.2s;
+      }
+      .nav-item:hover { background: var(--surface-muted); }
+      .nav-item.active {
+        background: var(--accent-soft);
+        border-left-color: var(--accent);
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .reset-link {
+        color: var(--link); background: none; border: none; padding: 0; text-decoration: underline; cursor: pointer; font-size: 12px;
+      }
+
+      .aws-main {
+        flex: 1;
+        overflow-y: auto;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .aws-header {
+        background: var(--surface);
+        padding: 24px 32px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .aws-header h1 { margin: 0; font-size: 24px; font-weight: 300; }
+      .aws-header p { margin: 8px 0 0 0; color: var(--text-soft); }
+
+      .tab-panel {
+        display: none;
+        padding: 24px 32px;
+        flex-direction: column;
+        gap: var(--density-gap);
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+      }
+      .tab-panel.active {
+        display: flex;
+      }
+
+      .aws-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+      }
+      .aws-card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-alt);
+        font-weight: 700;
+        display: flex; justify-content: space-between; align-items: center;
+      }
+      .aws-card-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+      .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--density-gap); }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--density-gap); }
+
+      h3, h4 { margin: 0; }
+      .mini-label { font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+      
+      .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; font-weight: 700; }
+      .tag.orange { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+      .code-block, .terminal-block, .code-editor, .event-editor {
+        font-family: "Courier New", Courier, monospace; border-radius: var(--radius); border: 1px solid var(--border-strong); background: #16191f; color: #f2f3f3; font-size: 13px;
+      }
+      .code-block, .terminal-block { padding: 12px; overflow: auto; white-space: pre-wrap; margin: 0; }
+      .terminal-block { min-height: 120px; }
+      .terminal-block.danger { color: #ff9980; }
+
+      label { display: grid; gap: 6px; font-weight: 700; font-size: 13px; }
+      input[type="range"] { width: 100%; cursor: pointer; }
+      select, input[type="text"], textarea {
+        padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface);
+      }
+      textarea { resize: vertical; min-height: 80px; }
+
+      .btn-row { display: flex; gap: 12px; }
+      .btn {
+        appearance: none; border: 1px solid transparent; border-radius: 16px; padding: 6px 16px; font-weight: 700; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; transition: background 0.2s;
+      }
+      .btn-primary { background: var(--accent); color: var(--accent-contrast); border-radius: 20px;}
+      .btn-primary:hover { background: var(--accent-hover); }
+      .btn-secondary { background: var(--surface); border-color: var(--text-soft); color: var(--text); border-radius: 20px;}
+      .btn-secondary:hover { background: var(--surface-muted); }
+      .btn-ghost { background: transparent; color: var(--link); padding: 6px 8px; }
+      .btn-ghost:hover { text-decoration: underline; }
+
+      .atom-row { display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; align-items: start; }
+      
+      .scenario-pills { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+      .scenario-pill { border: 1px solid var(--border); background: var(--surface); padding: 16px; text-align: left; cursor: pointer; border-radius: var(--radius); }
+      .scenario-pill.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+      .diagram-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+      .diagram-node { background: var(--surface-muted); border: 1px solid var(--border); padding: 12px; position: relative; font-size: 13px; }
+      .diagram-node::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); color: var(--accent); font-weight: 800; font-size: 16px; z-index: 1;}
+      .diagram-node:last-child::after { display: none; }
+      .cost-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .cost-box { padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); border-radius: var(--radius); }
+      .cost-total { font-size: 20px; font-weight: 300; margin-top: 4px; }
+
+      .editor-toolbar { background: #232f3e; color: white; padding: 6px 12px; font-size: 12px; font-weight: 700; border-radius: var(--radius) var(--radius) 0 0; }
+      .code-editor, .event-editor { width: 100%; min-height: 300px; padding: 16px; border-radius: 0 0 var(--radius) var(--radius); outline: none; }
+      .event-editor { min-height: 180px; }
+      .step-list { list-style: none; padding: 0; margin: 0; }
+      .step-item { padding: 12px; border-left: 3px solid var(--border); margin-bottom: 8px; background: var(--surface-muted); }
+      .step-item.active { border-left-color: var(--accent); background: var(--accent-soft); }
+
+      .sidebar-setting { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+      .sidebar-setting label { font-size: 12px; }
+      .sidebar-setting select { padding: 4px 8px; font-size: 12px; }
+      
+      .formula-box { background: var(--surface-muted); border: 1px dashed var(--border-strong); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;}
+
+      .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+      .modal-overlay.active { display: flex; }
+      .modal-content { background: var(--surface); width: 450px; max-width: 90%; border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.25); border: 1px solid var(--border); overflow: hidden; }
+      .modal-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 700; background: var(--surface-alt); }
+      .modal-body { padding: 20px 16px; font-size: 14px; line-height: 1.5; color: var(--text-soft); }
+      .btn-close { background: transparent; border: none; font-size: 18px; cursor: pointer; color: var(--text-soft); padding: 0; }
+      
+      .clickable-word { cursor: pointer; border-bottom: 1px dashed #5f6b7a; transition: all 0.2s; }
+      .clickable-word:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+      #aws-login-screen {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: #f2f3f3; z-index: 10000;
+        display: flex; flex-direction: column; align-items: center; padding-top: 8vh;
+        font-family: "Helvetica Neue", Roboto, Arial, sans-serif;
+      }
+      .login-logo { width: 75px; margin-bottom: 24px; }
+      .login-card {
+        background: #fff; width: 380px; max-width: 90%; padding: 32px 28px;
+        border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); border: 1px solid #d5dbdb;
+      }
+      .login-title { font-size: 20px; font-weight: 400; margin: 0 0 20px 0; color: #16191f; }
+      .login-field { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+      .login-field label { font-size: 14px; font-weight: 700; color: #16191f; }
+      .login-field input {
+        padding: 8px 12px; border: 1px solid #879596; border-radius: 2px;
+        font-size: 14px; outline: none; transition: border-color 0.2s; color: #16191f; background: #fff;
+      }
+      .login-field input:focus { border-color: #0073bb; box-shadow: 0 0 0 1px #0073bb; }
+      .login-btn {
+        width: 100%; background: #ec7211; color: #fff; border: none; border-radius: 20px;
+        padding: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.2s;
+        margin-top: 8px;
+      }
+      .login-btn:hover { background: #eb5f07; }
+
+      .atom-diagram { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 16px; padding: 16px; background: var(--surface-muted); border-radius: var(--radius); border: 1px dashed var(--border-strong); }
+      .atom-node { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius); font-size: 12px; text-align: center; min-width: 100px; box-shadow: var(--shadow); }
+      .atom-node .icon { font-size: 24px; margin-bottom: 4px; }
+      .atom-node .cat { font-weight: 700; color: var(--accent); font-size: 10px; text-transform: uppercase; }
+      .atom-arrow { color: var(--accent); font-weight: 900; font-size: 18px; }
+
+      @media (max-width: 1024px) {
+        .aws-app-body { flex-direction: column; }
+        .aws-sidebar { width: 100%; height: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid var(--border); }
+        .sidebar-nav { flex-direction: row; overflow-x: auto; padding-bottom: 8px; }
+        .nav-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
+        .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+        .grid-2, .grid-3, .diagram-flow, .cost-summary { grid-template-columns: 1fr; }
+        .diagram-node::after { content: "↓"; right: auto; left: 50%; bottom: -12px; top: auto; transform: translateX(-50%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="aws-login-screen">
+      <svg class="login-logo" viewBox="0 0 100 30" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#232F3E" d="M38.1 18.2c-.6.6-1.5 1.3-2.6 1.8-1.1.5-2.5.8-4.2.8-1.5 0-2.8-.3-3.9-1-.1-.1-.3-.2-.4-.3-.2-.2-.3-.4-.4-.5-.1-.2-.2-.5-.3-.7s-.1-.6-.1-.9c0-.6.1-1.1.4-1.6.3-.5.7-.9 1.1-1.3.5-.4 1.1-.7 1.8-.9.7-.3 1.5-.4 2.4-.4h4.1v-.6c0-.5-.1-1-.3-1.4-.2-.4-.5-.7-.8-.9-.4-.2-.8-.4-1.3-.4-.5 0-1 0-1.4.1s-.9.2-1.3.4c-.4.2-.8.5-1.1.8-.3.3-.6.7-.8 1.1l-3.3-2.1c.4-.6.9-1.2 1.5-1.7.6-.5 1.3-.9 2.1-1.3.8-.3 1.7-.6 2.7-.7 1-.1 2.1-.2 3.3-.2 1.7 0 3.1.2 4.4.7 1.2.5 2.2 1.1 2.9 2 .7.8 1.2 1.8 1.5 2.9.3 1.1.4 2.4.4 3.7v3.3c0 .8.1 1.6.3 2.3.2.7.5 1.3.9 1.9v.4h-4.3c-.3-.6-.6-1.1-.8-1.7zm-2.4-4.8h-3.4c-.6 0-1.1.1-1.6.2-.5.1-.9.3-1.2.6-.3.3-.6.6-.8 1s-.2.9-.2 1.4c0 .8.3 1.4.8 1.9.5.4 1.3.6 2.2.6.9 0 1.7-.2 2.4-.6s1.2-1 1.6-1.7v-3.4zm16.1 7.2l-3.2-10.4h3.8l1.6 6.3 1.8-6.3h3.4l1.9 6.2 1.6-6.2h3.6l-3.3 10.4h-3.6l-1.9-6-1.9 6h-3.8zm22.4-2c1.2.8 2.5 1.2 4.1 1.2 1 0 1.7-.2 2.3-.5.5-.3.8-.8.8-1.3 0-.4-.1-.7-.3-.9-.2-.3-.5-.5-.9-.6-.4-.2-.9-.3-1.5-.4-1.7-.3-3.1-.7-4.2-1.2s-1.8-1.1-2.4-2c-.5-.8-.8-1.9-.8-3.1 0-1.2.3-2.3 1-3.2s1.6-1.6 2.8-2c1.2-.5 2.6-.7 4.2-.7 1.5 0 2.9.2 4 .7 1.2.4 2.2 1.1 3 2l-2.4 2.5c-1.1-.8-2.3-1.3-3.8-1.3-.9 0-1.6.2-2 .5-.5.3-.7.7-.7 1.2 0 .4.1.7.3.9.2.3.5.5.9.6.4.2.9.3 1.5.4 1.7.3 3.1.7 4.2 1.2s1.8 1.1 2.4 2c.6.9.8 1.9.8 3.1 0 1.2-.3 2.3-1 3.2s-1.6 1.6-2.8 2.1c-1.2.4-2.6.6-4.2.6-1.7 0-3.3-.3-4.6-1-1.3-.6-2.4-1.5-3.3-2.6l2.6-2.5zm27-14.7c-5.8 4-13 6.4-20.7 6.4-8.8 0-17.1-3-23.7-8.3l-2 2.2c7.2 5.9 16.2 9.4 25.7 9.4 8.4 0 16.3-2.7 22.7-7.2l-2-2.5zm-5.5 1c.5 1.5 2 2.4 3.7 2.1 1.6-.2 2.8-1.4 3-3 .1-.4-.1-.7-.4-.8-.3-.1-.7.1-.8.4-.2 1-.9 1.7-1.9 1.8-1 .1-1.9-.5-2.2-1.4-.1-.3-.5-.5-.8-.4-.4.1-.7.4-.6.8z"/>
+      </svg>
+      <div class="login-card">
+        <h2 class="login-title">Sign in</h2>
+        <form id="aws-login-form">
+          <div class="login-field">
+            <label>Account ID (12 digits) or account alias</label>
+            <input type="text" value="812345678901" required />
+          </div>
+          <div class="login-field">
+            <label>IAM user name</label>
+            <input type="text" placeholder="user@example.com" required />
+          </div>
+          <div class="login-field">
+            <label>Password</label>
+            <input type="password" required />
+          </div>
+          <button type="submit" class="login-btn">Sign in</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="aws-main-app" style="display: none; height: 100vh; flex-direction: column; width: 100%;">
+      <nav class="aws-navbar">
+        <div class="aws-nav-left">
+          <span class="aws-logo-box">AWS</span>
+          <span>Lambda Management Console (Simulada)</span>
+        </div>
+        <div class="aws-nav-right">
+          <span>eu-south-2</span>
+          <span>Alumno_Lab</span>
+        </div>
+      </nav>
+
+      <div class="aws-app-body">
+        <aside class="aws-sidebar">
+          <div class="sidebar-section">
+            <h2 class="sidebar-title">Lambda Lab</h2>
+            <ul class="sidebar-nav">
+              <li class="nav-item active" data-tab-target="block-1">Práctica: Atomización</li>
+              <li class="nav-item" data-tab-target="block-2">Práctica: Costes</li>
+              <li class="nav-item" data-tab-target="block-3">Práctica: Runtime Python</li>
+            </ul>
+          </div>
+
+          <div class="sidebar-section">
+            <h2 class="sidebar-title">Progreso Local</h2>
+            <div style="font-size: 13px; display: grid; gap: 8px;">
+              <div style="display: flex; justify-content: space-between;"><span>Atomización:</span> <strong id="metric-atomization">0 pts</strong></div>
+              <div style="display: flex; justify-content: space-between;"><span>Casos Coste:</span> <strong id="metric-cost">0 / 10</strong></div>
+              <div style="display: flex; justify-content: space-between;"><span>Python:</span> <strong id="metric-python">Pendiente</strong></div>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <h2 class="sidebar-title">Preferencias UI</h2>
+            <div class="sidebar-setting">
+              <label>Tema
+                <select id="theme-select">
+                  <option value="aws-light">AWS Light</option>
+                  <option value="aws-dark">AWS Dark</option>
+                  <option value="aws-contrast">Alto Contraste</option>
+                </select>
+              </label>
+              <label>Texto
+                <select id="font-scale-select">
+                  <option value="compact">Compacto</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="large">Amplio</option>
+                </select>
+              </label>
+              <label>Densidad
+                <select id="density-select">
+                  <option value="compact">Compacta</option>
+                  <option value="comfortable" selected>Confortable</option>
+                </select>
+              </label>
+            </div>
+            <p style="font-size: 11px; color: var(--text-soft); margin-top: 16px;">Se guarda automáticamente en localStorage.</p>
+            <button id="reset-app" class="reset-link">Borrar progreso y reiniciar</button>
+          </div>
+        </aside>
+
+        <main class="aws-main">
+          <header class="aws-header">
+            <h1 id="active-tab-title">Bloque 1 - Identificación y atomización</h1>
+            <p id="active-tab-description">Analiza 10 funciones inventadas, separa responsabilidades y puntúa por nivel de detalle.</p>
+          </header>
+
+          <section id="block-1" class="tab-panel active" data-panel="block-1">
+            <div class="grid-3">
+              <div class="aws-card">
+                <div class="aws-card-body">
+                  <span class="mini-label">Objetivo: La Fábrica</span>
+                  <strong>Desmontar el proceso en piezas.</strong>
+                  <p style="margin: 4px 0 0; color: var(--text-soft);">Imagina que cada código es una línea de montaje. Tu tarea es identificar cada pequeño paso (Átomo) desde que entra un dato hasta que sale.</p>
+                </div>
+              </div>
+              <div class="aws-card">
+                <div class="aws-card-body">
+                  <span class="mini-label">Cómo puntúa</span>
+                  <strong>Desglose paso a paso.</strong>
+                  <p style="margin: 4px 0 0; color: var(--text-soft);">No hace falta saber programar. Lee la explicación de cada caso e intenta separar la tarea en 3, 4 o 5 pasos lógicos usando sentido común.</p>
+                </div>
+              </div>
+              <div class="aws-card">
+                <div class="aws-card-body">
+                  <span class="mini-label">Ayuda interactiva</span>
+                  <strong>Pulsa cualquier palabra.</strong>
+                  <p style="margin: 4px 0 0; color: var(--text-soft);">Si ves una palabra en inglés o de código que no entiendes, haz clic sobre ella y te explicaremos qué significa de forma sencilla.</p>
+                </div>
+              </div>
+            </div>
+
+            <h3 style="margin-top: 24px;">Ejemplos Guiados (Atomización)</h3>
+            <p style="color: var(--text-soft); margin-top: 4px;">Revisa estos 4 ejemplos resueltos y fíjate cómo cada fragmento se divide en sus responsabilidades lógicas (Átomos).</p>
+            <div id="examples-list" class="grid-2" style="margin-top: 12px; margin-bottom: 16px;"></div>
+
+            <h3 style="margin-top: 16px;">Ejercicios de Atomización (10 Snippets)</h3>
+            <p style="color: var(--text-soft); margin-top: 4px;">Pulsando sobre cualquier palabra del código verás lo que significa. Desglosa cada bloque para ganar puntos.</p>
+
+            <div id="atomization-list" class="grid-2" style="margin-top: 8px;"></div>
+          </section>
+
+          <section id="block-2" class="tab-panel" data-panel="block-2">
+            
+            <div class="formula-box">
+              <span class="mini-label">Fórmula de Estimación AWS</span><br/>
+              <strong style="font-size: 16px; display: block; margin: 8px 0;">``Coste Total'' = ``Coste Trigger'' + ``Coste Peticiones'' + ``Coste Cómputo''</strong>
+              <ul style="margin: 0 0 0 16px; font-size: 13px; color: var(--text-soft);">
+                <li><strong>``Coste Trigger'':</strong> Lo que cobra el servicio de origen (S3, API Gateway, SQS) por despertar a Lambda.</li>
+                <li><strong>``Coste Peticiones'':</strong> Cobro fijo por cada millón de invocaciones a Lambda tras agotar el Free Tier.</li>
+                <li><strong>``Coste Cómputo'':</strong> Basado en la memoria asignada (RAM) multiplicada por el tiempo de ejecución en milisegundos (GB-s).</li>
+              </ul>
+            </div>
+
+            <div class="aws-card">
+              <div class="aws-card-header">Calculadora de Arquitecturas</div>
+              <div class="aws-card-body">
+                <div id="scenario-pills" class="scenario-pills"></div>
+                
+                <div id="diagram-stage" style="margin: 16px 0;"></div>
+
+                <div class="grid-2">
+                  <div>
+                    <label>Origen del Trigger
+                      <select id="trigger-select"></select>
+                    </label>
+                    <label style="margin-top: 12px;">Eventos mensuales: <span id="events-output" style="font-weight: normal;"></span>
+                      <input id="events-input" type="range" min="1000" max="5000000" step="1000" />
+                    </label>
+                  </div>
+                  <div>
+                    <label>Memoria Lambda: <span id="memory-output" style="font-weight: normal;"></span>
+                      <input id="memory-input" type="range" min="128" max="3008" step="128" />
+                    </label>
+                    <label style="margin-top: 12px;">Duración media: <span id="duration-output" style="font-weight: normal;"></span>
+                      <input id="duration-input" type="range" min="50" max="10000" step="50" />
+                    </label>
+                    <label style="margin-top: 12px;">Tamaño de evento: <span id="payload-output" style="font-weight: normal;"></span>
+                      <input id="payload-input" type="range" min="1" max="512" step="1" />
+                    </label>
+                  </div>
+                </div>
+
+                <div id="cost-summary" class="cost-summary" style="margin-top: 16px;"></div>
+              </div>
+            </div>
+
+            <h3 style="margin-top: 24px;">Ejemplos Guiados (Análisis de Costes)</h3>
+            <p style="color: var(--text-soft); margin-top: 4px;">Fíjate en cómo se analiza la arquitectura y se justifican los costes en el resultado mensual.</p>
+            <div id="cost-examples-list" class="grid-2" style="margin-top: 12px; margin-bottom: 24px;"></div>
+
+            <h3 style="margin-top: 16px;">Casos de Uso a Analizar (Ejercicios)</h3>
+            <p style="color: var(--text-soft); margin-top: 4px;">Lee la descripción interactiva de cada caso. Luego, pulsa "Simular variables" para cargar su arquitectura en la calculadora y anota tu conclusión sobre el coste resultante.</p>
+            <div id="case-list" class="grid-2" style="margin-top: 12px;"></div>
+          </section>
+
+          <section id="block-3" class="tab-panel" data-panel="block-3">
+            <div class="aws-card">
+              <div class="aws-card-header" style="flex-wrap: wrap; gap: 12px;">
+                <span>Simulador WebAssembly para Python 3</span>
+                <div class="btn-row" style="flex-wrap: wrap;">
+                  <button id="btn-mission-1" class="btn btn-secondary" onclick="loadPythonMission(1)">Misión 1: Hello World</button>
+                  <button id="btn-mission-2" class="btn btn-secondary" onclick="loadPythonMission(2)">Misión 2: Fibonacci y TXT</button>
+                  <button id="btn-mission-3" class="btn btn-secondary" onclick="loadPythonMission(3)">Misión 3: Creador Usuarios</button>
+                  <button id="btn-mission-4" class="btn btn-secondary" onclick="loadPythonMission(4)">Misión 4: Descuentos</button>
+                  <button id="btn-mission-5" class="btn btn-secondary" onclick="loadPythonMission(5)">Misión 5: Alerta Temperatura</button>
+                </div>
+              </div>
+              <div class="aws-card-body">
+                <div id="mission-instructions" style="background: var(--surface-muted); padding: 16px; border-left: 4px solid var(--focus); border-radius: 4px;">
+                </div>
+                
+                <div class="grid-2" style="margin-top: 8px;">
+                  <div>
+                    <div class="editor-toolbar">lambda_function.py</div>
+                    <textarea id="python-code" class="code-editor" spellcheck="false"></textarea>
+                  </div>
+                  
+                  <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                      <div class="editor-toolbar">Test Event (JSON)</div>
+                      <textarea id="event-input" class="event-editor" spellcheck="false"></textarea>
+                    </div>
+                    
+                    <div class="btn-row">
+                      <button id="load-pyodide" class="btn btn-secondary" type="button">Inicializar Entorno Python</button>
+                      <button id="invoke-button" class="btn btn-primary" type="button" disabled>Test (Lanzar Trigger)</button>
+                    </div>
+                    <div id="runtime-status" style="font-size: 12px; color: var(--text-soft);">A la espera de entorno...</div>
+                    
+                    <ul id="python-steps" class="step-list"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div class="aws-card">
+                <div class="aws-card-header">Execution Result (Return)</div>
+                <pre id="python-result" class="terminal-block" style="border:none; border-radius: 0 0 2px 2px;"></pre>
+              </div>
+              <div class="aws-card">
+                <div class="aws-card-header">CloudWatch Logs (Print)</div>
+                <pre id="python-logs" class="terminal-block" style="border:none; border-radius: 0 0 2px 2px;"></pre>
+              </div>
+              <div class="aws-card">
+                <div class="aws-card-header">Error Traceback</div>
+                <pre id="python-errors" class="terminal-block danger" style="border:none; border-radius: 0 0 2px 2px;"></pre>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="word-modal" class="modal-overlay" onclick="if(event.target===this) closeWordModal()">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span id="word-modal-title">Palabra</span>
+          <button class="btn-close" onclick="closeWordModal()">✕</button>
+        </div>
+        <div class="modal-body" id="word-modal-body">
+          Explicación aquí.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const APP_STATE_KEY = "lambda-studio-lab-state";
+
+      const codeDictionary = {
+        "import": "Instrucción para importar librerías en Python.",
+        "json": "Librería estándar para manejar datos en formato JSON.",
+        "boto3": "SDK oficial de AWS para Python. Sirve para interactuar con otros servicios.",
+        "s3": "Amazon S3, servicio de almacenamiento de objetos de AWS.",
+        "def": "Palabra reservada de Python para definir funciones.",
+        "lambda_handler": "Nombre estándar del punto de entrada (handler) que ejecuta AWS Lambda al iniciarse.",
+        "event": "Diccionario que contiene todos los datos de entrada del servicio origen (el trigger).",
+        "context": "Objeto que ofrece métodos e información sobre la invocación y el entorno de AWS Lambda.",
+        "body": "Cuerpo del mensaje, muy común en llamadas HTTP (API Gateway) o SQS.",
+        "loads": "Función de json para convertir un string JSON en un diccionario Python.",
+        "client": "Crea una conexión de bajo nivel a un servicio de AWS a través de boto3.",
+        "bucket": "Contenedor principal en S3 donde se guardan los archivos.",
+        "key": "El nombre o identificador único de un archivo dentro de un bucket de S3.",
+        "return": "Instrucción que finaliza la función y devuelve el resultado.",
+        "statusCode": "Código HTTP (ej. 200, 401) que informa a API Gateway el éxito o error de la operación.",
+        "print": "Imprime un mensaje. En AWS Lambda, esta salida se guarda permanentemente en CloudWatch Logs.",
+        "exports": "Exporta la función en Node.js, equivalente a preparar el handler para AWS.",
+        "async": "Define una función asíncrona en Javascript (Node.js).",
+        "Records": "Lista (Array) dentro del 'event' que contiene los mensajes o cambios pendientes a procesar.",
+        "dynamodb": "Base de datos NoSQL gestionada de AWS.",
+        "SQS": "Servicio de colas de mensajes de AWS, ideal para procesar trabajos en segundo plano.",
+        "SNS": "Servicio de notificaciones (Pub/Sub) para envío de mensajes en cadena.",
+        
+        "api": "Interfaz de Programación de Aplicaciones. Permite que dos sistemas web se comuniquen entre sí.",
+        "gateway": "API Gateway: Servicio de AWS que actúa como 'puerta delantera' para recibir llamadas web seguras de los usuarios.",
+        "http": "Protocolo estándar de la web para pedir y enviar información (páginas, datos, etc).",
+        "tráfico": "Cantidad de peticiones o usuarios que visitan o utilizan un sistema en un periodo de tiempo.",
+        "pipeline": "Secuencia automática de tareas. La salida de un paso se convierte en la entrada del siguiente.",
+        "memoria": "Cantidad de RAM asignada a la función Lambda. Más memoria equivale también a un procesador más rápido.",
+        "ram": "Memoria de acceso aleatorio temporal para ejecutar procesos. Fundamental para calcular los costes.",
+        "cron": "Herramienta que se basa en un reloj para ejecutar procesos automáticos a una hora u día específico.",
+        "ops": "Operaciones IT / Mantenimiento. Tareas relacionadas con administrar sistemas en la nube.",
+        "security": "Seguridad en la nube. Implica rastreo de errores, análisis de amenazas y auditorías.",
+        "hub": "Punto central de conexión. Por ejemplo AWS Security Hub para revisar todas las alertas en un solo lugar.",
+        "cola": "Estructura de datos FIFO. Los mensajes se amontonan aquí hasta que el sistema está libre para procesarlos.",
+        "carga": "Volumen de trabajo o cantidad masiva de datos que un sistema recibe de golpe (Picos).",
+        "micro": "Referente a microservicios o procesos pequeñísimos que apenas consumen recursos y acaban en pocos ms.",
+        "eventos": "Mensajes o señales invisibles que viajan por el sistema para indicar que 'algo ha pasado'.",
+        "payload": "La 'carga útil'. Es el peso real en Kilobytes (KB) de los datos de negocio que viajan en un evento.",
+        "kb": "Kilobyte. Unidad de medida para pesar datos y mensajes.",
+        "mb": "Megabyte. Unidad de medida, utilizada para la asignación de la memoria a Lambda.",
+        "ms": "Milisegundo. En serverless pagas por cada milisegundo que tu código está ejecutándose.",
+        "peticiones": "El número de llamadas de ejecución, solicitudes o clics que activan una arquitectura.",
+        "facturación": "Cálculo de costes. En el mundo serverless solo pagas por lo que consumes milisegundo a milisegundo.",
+        "iot": "Internet of Things (Internet de las cosas). Dispositivos y sensores pequeños conectados a la red.",
+        "cliente": "Navegador web o aplicación móvil desde la que interactúa el usuario de forma directa.",
+        "web": "Sistema interconectado en internet accesible desde cualquier parte.",
+        "productor": "Sistema, persona o código que origina o envía mensajes a una cola de SQS.",
+        "ticket": "Sistema de incidencias que avisa a los ingenieros de que algo falla para que lo arreglen.",
+        "uploader": "Persona o proceso que sube un archivo (fotos, vídeos, documentos) a la nube.",
+        
+        "os": "Librería del sistema operativo. Permite interactuar con carpetas y archivos virtuales.",
+        "time": "Librería de tiempo. Se usa para capturar milisegundos o calcular duraciones.",
+        "get": "Método seguro. Si no encuentra el dato en el JSON, no rompe el programa, usa el valor que le des por defecto.",
+        "lower": "Convierte todo un texto a minúsculas. Ideal para limpiar y estandarizar nombres de usuario.",
+        "int": "Asegura que el valor sea un número entero puro (sin decimales).",
+        "range": "Genera una secuencia de números. Muy usado en bucles para repetir acciones matemáticas.",
+        "with": "Manejador seguro en Python. Abre archivos y garantiza que se cierren solos al terminar de usarlos.",
+        "open": "Abre un archivo. El modo 'w' indica que vas a escribir dentro de él.",
+        "write": "Escribe el texto final calculado dentro del archivo que hemos abierto.",
+        "if": "Condición. Si ocurre algo concreto (ej. temperatura mayor a 5), se activa la emergencia.",
+        "else": "Condición contraria. Si NO ocurre la emergencia, ejecuta la ruta normal.",
+        "for": "Bucle. Repite el código que tiene sangrado (metido hacia la derecha) una cantidad exacta de veces.",
+        "True": "Verdadero. Activación booleana. Sirve para lanzar alarmas reales en otros sistemas AWS.",
+        "False": "Falso. Desactivación booleana.",
+        "max": "Función de Python que busca y devuelve el número más alto dentro de una lista.",
+        "datos_usuario": "Clave principal del JSON que contiene agrupada la información de un usuario.",
+        "httpMethod": "Indica cómo viajan los datos en internet (GET para pedir, POST para enviar).",
+        "detail": "Bloque estándar donde servicios como EventBridge guardan la información real de un aviso.",
+        "source": "Indica qué máquina o servicio de AWS generó esta alerta en la nube.",
+        "lista_temperaturas": "Una colección (array) que guarda varias medidas numéricas tomadas en diferentes minutos."
+      };
+
+      function getAwsIcon(text, cat) {
+        const t = (text || "").toLowerCase();
+        const c = (cat || "").toLowerCase();
+        if (t.includes('api') || t.includes('http') || t.includes('gateway') || t.includes('url')) return '🚪';
+        if (t.includes('s3') || t.includes('bucket') || t.includes('archivo') || t.includes('imagen') || t.includes('pdf') || t.includes('foto')) return '🪣';
+        if (t.includes('sqs') || t.includes('cola')) return '📨';
+        if (t.includes('sns') || t.includes('mensaje') || t.includes('email') || t.includes('alerta')) return '💬';
+        if (t.includes('dynamo') || t.includes('base de datos') || t.includes('db') || t.includes('guardar') || t.includes('persistencia')) return '🗄️';
+        if (t.includes('eventbridge') || t.includes('cron') || t.includes('reloj') || t.includes('tiempo')) return '⏱️';
+        if (t.includes('lambda') || t.includes('transforma') || t.includes('calcul') || c === 'transform' || c === 'transformación') return 'λ';
+        if (c === 'trigger') return '⚡';
+        if (c === 'input' || c === 'entrada') return '📥';
+        if (c === 'output' || c === 'salida') return '📤';
+        if (c === 'persistence' || c === 'persistencia') return '💾';
+        return '⚙️';
+      }
+
+      function showWordModal(word) {
+        document.getElementById("word-modal-title").innerText = "Término: " + word;
+        const lowerWord = word.toLowerCase();
+        let desc = codeDictionary[lowerWord] || codeDictionary[word];
+        if (!desc) {
+          desc = "Término general del contexto o código. Si es un servicio o concepto tecnológico, se usa para hacer funcionar esta arquitectura cloud.";
+        }
+        document.getElementById("word-modal-body").innerText = desc;
+        document.getElementById("word-modal").classList.add("active");
+      }
+
+      function closeWordModal() {
+        document.getElementById("word-modal").classList.remove("active");
+      }
+
+      function makeClickableCode(codeStr) {
+        let escaped = codeStr.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return escaped.replace(/([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑ]+)/g, '<span class="clickable-word" onclick="showWordModal(\'$1\')">$1</span>');
+      }
+
+      const atomExamples = [
+        { title: "Resize de Imagen", stack: "S3 Event -> Python", code: "def lambda_handler(event, context):\n    img_id = event['Records'][0]['s3']['object']['key']\n    image = download_img(img_id)\n    resized = resize_image(image)\n    upload_to_s3(resized)\n    return 'OK'", atoms: ["Trigger: Llega el aviso de una nueva imagen", "Entrada: Descargar la imagen original", "Transformación: Hacer la imagen más pequeña", "Persistencia: Guardar la nueva imagen lista"] },
+        { title: "API Backend", stack: "API Gateway -> Python", code: "def lambda_handler(event, context):\n    if not event.get('headers').get('token'):\n        return {'statusCode': 401}\n    data = get_from_db(event['body'])\n    return {'statusCode': 200, 'body': data}", atoms: ["Seguridad: Comprobar la identidad", "Entrada: Leer lo que pide el usuario", "Transformación/Persistencia: Buscar en la base de datos", "Salida: Entregar la información"] },
+        { title: "Cola de Tareas", stack: "SQS -> Node.js", code: "exports.handler = async (event) => {\n  for (const record of event.Records) {\n    let msg = JSON.parse(record.body);\n    enviar_email(msg.user);\n  }\n  return { success: true };\n};", atoms: ["Trigger: Recibir un lote de mensajes pendientes", "Transformación: Abrir y leer cada mensaje uno por uno", "Salida: Ejecutar la acción"] },
+        { title: "Mantenimiento", stack: "EventBridge -> Python", code: "def lambda_handler(event, context):\n    users = db.get_inactive()\n    for u in users:\n        db.delete(u)\n    print('Limpieza completada')", atoms: ["Trigger: Reloj automático", "Entrada: Pedir lista de usuarios viejos", "Persistencia: Borrarlos de los archivos", "Salida: Dejar una nota de que ya se hizo"] }
+      ];
+
+      const atomizationSnippets = [
+        { id: "api-image-normalizer", title: "Image Intake API", stack: "Python + API Gateway", prompt: "Imagina que recibes una foto gigante y debes guardarla más pequeña.", code: `import json\nimport boto3\n\ns3 = boto3.client("s3")\ndef lambda_handler(event, context):\n    body = json.loads(event["body"])\n    bucket, key = body["bucket"], body["sourceKey"]\n    s3.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": key}, Key=f"norm/{key}", MetadataDirective="REPLACE")\n    return {"statusCode": 202, "body": "OK"}` },
+        { id: "s3-transcriber", title: "Object To Transcript", stack: "Python + S3 Event", prompt: "Entra un archivo de voz y sale un texto.", code: `import urllib.parse\ndef lambda_handler(event, context):\n    record = event["Records"][0]\n    bucket = record["s3"]["bucket"]["name"]\n    key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])\n    print(f"Transcribir {bucket}/{key}")\n    return {"bucket": bucket, "source": key}` },
+        { id: "stream-feature-score", title: "Feature Scoring Stream", stack: "Node.js + DynamoDB", prompt: "Llega una lista de notas.", code: `exports.handler = async (event) => {\n  for (const record of event.Records) {\n    const payload = JSON.parse(record.dynamodb.NewImage.payload.S);\n    console.log({ userId: payload.userId, score: payload.tokens.length * 2 });\n  }\n  return { processed: event.Records.length };\n};` },
+        { id: "queue-batch-router", title: "Queue Batch Router", stack: "Node.js + SQS", prompt: "Imagina un cartero separando cartas urgentes a un lado y normales a otro.", code: `exports.handler = async (event) => {\n  const accepted = [], rejected = [];\n  for (const msg of event.Records) {\n    let item = JSON.parse(msg.body);\n    item.priority >= 7 ? accepted.push(item) : rejected.push(item.id);\n  }\n  return { batchItemFailures: rejected.map(id => ({ itemIdentifier: id })), accepted };\n};` },
+        { id: "eventbridge-guard", title: "Rule Guard", stack: "Python + EventBridge", prompt: "Eres un guardia de seguridad. Si ves un error avisas por radio para abrir un incidente. Si no, lo ignoras.", code: `def lambda_handler(event, context):\n    detail = event.get("detail", {})\n    if detail.get("state") == "FAILED":\n        print("Abrir incidente")\n        return {"action": "create-ticket"}\n    return {"action": "ignore"}` },
+        { id: "bedrock-prompt-cache", title: "Prompt Cache Wrapper", stack: "Python + API Gateway", prompt: "Eres un cajero. Primero pides el DNI. Si preguntan algo que ya sabes, respondes de memoria. Si es nuevo, lo procesas.", code: `def lambda_handler(event, context):\n    if not event["headers"].get("x-token"):\n        return {"statusCode": 401}\n    prompt = event["queryStringParameters"]["prompt"]\n    if prompt.lower() in {"hola", "status"}:\n        return {"statusCode": 200, "body": "cache-hit"}\n    return {"statusCode": 200, "body": "generated::..."}` },
+        { id: "metrics-enricher", title: "Metrics Enricher", stack: "Node.js + Kinesis", prompt: "Recibes un paquete sin etiqueta. Lo abres, le pegas una pegatina que dice que viene de edge y lo vuelves a enviar.", code: `exports.handler = async (event) => {\n  return event.records.map((rec) => {\n    const metric = JSON.parse(Buffer.from(rec.data, "base64").toString("utf8"));\n    metric.origin = "edge";\n    return { result: "Ok", data: Buffer.from(JSON.stringify(metric)).toString("base64") };\n  });\n};` },
+        { id: "pdf-thumb-pipeline", title: "PDF Thumb Pipeline", stack: "Python + S3 Event", prompt: "Alguien sube un PDF. Tu tarea es detectarlo, cambiarle el nombre de pdf a png y guardarlo.", code: `def lambda_handler(event, context):\n    source = event["Records"][0]["s3"]["object"]["key"]\n    thumb = source.replace(".pdf", ".png")\n    print(f"Subir miniatura a {thumb}")\n    return {"thumbnail": thumb}` },
+        { id: "tenant-sanitizer", title: "Tenant Sanitizer", stack: "Python + API Gateway", prompt: "Alguien escribe su nombre. Primero compruebas de qué empresa viene, le quitas los espacios extra y lo devuelves limpio.", code: `import json\ndef lambda_handler(event, context):\n    tenant = event["requestContext"]["authorizer"]["tenantId"]\n    body = json.loads(event["body"])\n    return {"statusCode": 200, "body": json.dumps({"tenant": tenant, "name": body["name"].strip()})}` },
+        { id: "notification-fanout", title: "Notification Fanout", stack: "Node.js + SNS", prompt: "Recibes alertas. Si dice urgente sacas el Busca. Si no, envías un email.", code: `exports.handler = async (event) => {\n  for (const record of event.Records) {\n    const msg = JSON.parse(record.Sns.Message);\n    console.log({ channel: msg.urgent ? "pager" : "email" });\n  }\n  return { ok: true };\n};` },
+      ];
+
+      const triggerCatalog = {
+        "api-gateway": { label: "API Gateway HTTP", costPerMillion: 3.5, freeTier: 1000000, payloadChunkKb: 10240, notes: "Referencia llamadas HTTP." },
+        "eventbridge": { label: "EventBridge Bus", costPerMillion: 1.0, freeTier: 0, payloadChunkKb: 64, notes: "Bloques de 64KB = 1 evento." },
+        "sqs": { label: "SQS Standard", costPerMillion: 0.4, freeTier: 1000000, payloadChunkKb: 64, requestMultiplier: 2, notes: "Aprox. lectura y borrado." },
+        "s3-put": { label: "S3 Object Upload", costPerMillion: 5.0, freeTier: 0, payloadChunkKb: 1024, notes: "Aprox. solicitudes PUT." },
+      };
+
+      const scenarioTemplates = [
+        { id: "ingest-http", name: "HTTP Ingest", description: "API Gateway -> Lambda", trigger: "api-gateway", nodes: [{ title: "🌐 Cliente Web", body: "Navegador o App. Envía la petición a internet." }, { title: "🚪 API Gateway", body: "Puerta de entrada de AWS." }, { title: "λ Lambda", body: "Tu código. Procesa la lógica de negocio." }, { title: "📊 CloudWatch", body: "Servicio de monitorización." }], defaults: { events: 120000, memory: 512, duration: 240, payload: 16 } },
+        { id: "archive-pipeline", name: "S3 Pipeline", description: "S3 Event -> Lambda", trigger: "s3-put", nodes: [{ title: "👤 Uploader", body: "El usuario que sube el fichero original a la nube." }, { title: "🪣 S3 Trigger", body: "Disco duro virtual." }, { title: "λ Lambda", body: "Se despierta automáticamente y hace la Transformación." }, { title: "🪣 S3 Salida", body: "Disco duro virtual." }], defaults: { events: 300000, memory: 1024, duration: 850, payload: 256 } },
+        { id: "ops-watch", name: "Ops Watch", description: "EventBridge -> Lambda", trigger: "eventbridge", nodes: [{ title: "⏱️ Regla Cron", body: "Reloj interno." }, { title: "🌉 EventBridge", body: "Servicio enrutador de AWS." }, { title: "λ Lambda", body: "Ejecuta un escaneo automático." }, { title: "🎫 Sistema Ticket", body: "Servicio final." }], defaults: { events: 70000, memory: 256, duration: 160, payload: 8 } },
+        { id: "queue-burst", name: "Burst Queue", description: "SQS -> Lambda", trigger: "sqs", nodes: [{ title: "📦 Productor", body: "Programa u origen." }, { title: "📨 SQS", body: "Cola de AWS." }, { title: "λ Lambda", body: "Va tomando lotes pequeños." }, { title: "🗄️ DynamoDB", body: "Base de Datos NoSQL ultrarrápida." }], defaults: { events: 500000, memory: 1536, duration: 480, payload: 32 } },
+      ];
+
+      const costCases = [
+        { id: "case-1", label: "Caso 1: API Básica", scenarioId: "ingest-http", events: 8000, memory: 256, duration: 120, payload: 4, desc: "Una API básica que recibe muy pocas peticiones HTTP al mes." },
+        { id: "case-2", label: "Caso 2: API de Tráfico", scenarioId: "ingest-http", events: 500000, memory: 1024, duration: 600, payload: 32, desc: "Simula un portal web con picos de tráfico." },
+        { id: "case-3", label: "Caso 3: Imágenes Pesadas", scenarioId: "archive-pipeline", events: 30000, memory: 2048, duration: 1400, payload: 512, desc: "Pipeline pesado." },
+        { id: "case-4", label: "Caso 4: Generador de Textos", scenarioId: "archive-pipeline", events: 180000, memory: 1024, duration: 900, payload: 256, desc: "Se generan automáticamente facturas en PDF." },
+        { id: "case-5", label: "Caso 5: Cron Ops", scenarioId: "ops-watch", events: 20000, memory: 256, duration: 150, payload: 8, desc: "Tareas de mantenimiento u Ops que están automatizadas por un Cron." },
+        { id: "case-6", label: "Caso 6: Security Hub", scenarioId: "ops-watch", events: 2500000, memory: 512, duration: 300, payload: 24, desc: "Sistema de Security." },
+        { id: "case-7", label: "Caso 7: Cola SQS", scenarioId: "queue-burst", events: 1000000, memory: 1024, duration: 350, payload: 64, desc: "Cola SQS encargada de procesar pedidos en segundo plano." },
+        { id: "case-8", label: "Caso 8: Pico de Carga Extrema", scenarioId: "queue-burst", events: 4200000, memory: 1536, duration: 700, payload: 48, desc: "Carga extrema en pleno Black Friday." },
+        { id: "case-9", label: "Caso 9: API Matemática", scenarioId: "ingest-http", events: 2400000, memory: 3008, duration: 1900, payload: 96, desc: "Una API que ejecuta modelos predictivos complejos." },
+        { id: "case-10", label: "Caso 10: Eventos Micro de IoT", scenarioId: "ops-watch", events: 900000, memory: 128, duration: 80, payload: 2, desc: "Sensores de IoT enviando temperaturas sin parar." }
+      ];
+
+      const pythonSteps = [
+        { title: "1. Inicialización", body: "El runtime de Python 3 se carga en el navegador." },
+        { title: "2. Preparar Input", body: "El JSON se convierte a diccionario Python." },
+        { title: "3. Ejecución (Invoke)", body: "Se llama a lambda_handler(event, context)." },
+        { title: "4. Salida", body: "Se capturan los retornos, prints y posibles excepciones." },
+      ];
+
+      const pythonMissions = {
+        1: {
+          title: "Misión 1: Hello World",
+          instructions: `
+            <h4 style="margin:0 0 8px 0; color: var(--focus);">Misión 1: Tu primera Lambda (Hello World)</h4>
+            <p style="margin:0 0 8px 0;"><strong>¿Qué hay que hacer?</strong> Abajo tienes el código de referencia (pulsa las palabras si tienes dudas). Fíjate en cómo funciona y <strong>cópialo a mano en el editor negro</strong> para rellenar la función vacía. El objetivo es leer el campo "nombre" del evento JSON y devolver un saludo.</p>
+            <div class="formula-box" style="margin-top:12px; padding: 12px; margin-bottom: 0;">
+              <span class="mini-label">Cálculo de coste para 1000 ejecuciones:</span><br/>
+              Este código es muy ligero. Necesitará la mínima memoria de RAM (128 MB) y tardará apenas ~2 ms.<br/>
+              <strong>\`\`Coste Total'' = \`\`Coste Trigger'' ($0 manual) + \`\`Coste Peticiones'' ($0 al no pasar del millón) + \`\`Coste Cómputo'' (128MB x 2ms x 1000 = Casi $0)</strong>.
+            </div>
+          `,
+          referenceCode: `def lambda_handler(event, context):\n    nombre_usuario = event.get("nombre", "Desconocido")\n    print(f"Iniciando el saludo especial para {nombre_usuario}...")\n    return {\n        "statusCode": 200,\n        "body": f"¡Hello World, {nombre_usuario}! Has creado tu primera Lambda."\n    }`,
+          code: `def lambda_handler(event, context):\n    `,
+          event: `{\n  "nombre": "Estudiante de AWS"\n}`,
+          explanation: `
+            <ul style="margin:0; padding-left:20px;">
+              <li><strong>event.get:</strong> Usamos esto para leer datos de forma segura. Si el cliente olvida enviar su nombre en el JSON, no da error, sino que asume el valor Desconocido.</li>
+              <li><strong>print:</strong> Deja un rastro de texto. En AWS real, esto se guarda automáticamente en CloudWatch Logs para auditorías o detectar fallos.</li>
+              <li><strong>return:</strong> AWS espera que le devolvamos un diccionario de respuesta. El statusCode 200 es el código de internet universal para avisar al cliente que todo fue bien.</li>
+            </ul>
+          `
+        },
+        2: {
+          title: "Misión 2: Fibonacci y Archivos TXT",
+          instructions: `
+            <h4 style="margin:0 0 8px 0; color: var(--focus);">Misión 2: Midamos el rendimiento (Fibonacci y TXT)</h4>
+            <p style="margin:0 0 8px 0;"><strong>¿Qué hay que hacer?</strong> AWS Lambda te permite usar una carpeta temporal para crear archivos en el momento. Escribe el código de referencia en el editor negro para calcular un número de Fibonacci, guardarlo en un archivo txt y ver los milisegundos reales de retraso.</p>
+            <p style="margin:0 0 8px 0;">Pide un número en el JSON de la derecha. <strong>¡Juega con él!</strong> Cambia el 15000 por 30000 o 50000 y mira cómo suben los ms en el Execution Result.</p>
+            <div class="formula-box" style="margin-top:12px; padding: 12px; margin-bottom: 0;">
+              <span class="mini-label">Cálculo de coste para 1000 ejecuciones pesadas:</span><br/>
+              Como consume mucha CPU, subiremos la RAM a 1024 MB. Digamos que tarda 300 ms (0.3 segundos) por ejecución:<br/>
+              <strong>\`\`Coste Cómputo'' = (1000 peticiones * 0.3 seg * 1 GB de RAM) = 300 GB-s</strong>. Sigue siendo muy barato, pero en escalas gigantes, optimizar estos milisegundos ahorra fortunas.
+            </div>
+          `,
+          referenceCode: `import time\nimport os\n\ndef lambda_handler(event, context):\n    inicio_ms = int(time.time() * 1000)\n    limite = event.get("numero", 1000)\n    print(f"Calculando Fibonacci de {limite}...")\n    a, b = 0, 1\n    for _ in range(limite):\n        a, b = b, a + b\n    ruta_archivo = "/tmp/resultado_fibonacci.txt"\n    with open(ruta_archivo, "w") as f:\n        f.write(str(a))\n    fin_ms = int(time.time() * 1000)\n    tiempo_total = fin_ms - inicio_ms\n    print(f"¡Terminado! Archivo guardado en {ruta_archivo}")\n    return {\n        "mensaje": "Calculo intensivo completado",\n        "fichero_generado": ruta_archivo,\n        "tiempo_tardado_ms": tiempo_total\n    }`,
+          code: `import time\nimport os\n\ndef lambda_handler(event, context):\n    `,
+          event: `{\n  "numero": 15000\n}`,
+          explanation: `
+            <ul style="margin:0; padding-left:20px;">
+              <li><strong>import time, os:</strong> Traemos las herramientas del sistema para medir milisegundos y gestionar carpetas sin que el programa pese más de lo necesario.</li>
+              <li><strong>time.time():</strong> Captura el reloj en milisegundos al empezar y al acabar, la resta nos dice lo rápido que ha sido AWS procesando la matemática.</li>
+              <li><strong>tmp:</strong> Es el único disco duro temporal seguro que AWS te permite escribir. Útil para manipular PDFs, imágenes o excels sobre la marcha.</li>
+              <li><strong>with open:</strong> Forma segura y profesional de crear y escribir el resultado numérico en nuestro archivo txt cerrándolo de inmediato.</li>
+            </ul>
+          `
+        },
+        3: {
+          title: "Misión 3: Generador de Nombres (Datos Anidados)",
+          instructions: `
+            <h4 style="margin:0 0 8px 0; color: var(--focus);">Misión 3: Generador de Nombres (Datos Anidados)</h4>
+            <p style="margin:0 0 8px 0;"><strong>¿Qué hay que hacer?</strong> En la vida real, los eventos vienen con datos anidados (diccionarios dentro de diccionarios). Tu función recibe un JSON con un bloque "datos_usuario". Extrae ese bloque primero, y de ahí saca el nombre y apellido para generar un username seguro en minúsculas. <strong>Copia el código al editor negro</strong> y cambia el JSON para crear a tu usuario.</p>
+          `,
+          referenceCode: `def lambda_handler(event, context):\n    datos = event.get("datos_usuario", {})\n    nombre = datos.get("nombre", "usuario")\n    apellido = datos.get("apellido", "nuevo")\n    username = f"{nombre.lower()}_{apellido.lower()}"\n    print(f"Generando usuario para la base de datos: {username}")\n    return {\n        "statusCode": 200,\n        "username_creado": username,\n        "mensaje": "Cuenta lista para usarse"\n    }`,
+          code: `def lambda_handler(event, context):\n    `,
+          event: `{\n  "metadata": {\n    "origen": "app_movil"\n  },\n  "datos_usuario": {\n    "nombre": "Ana",\n    "apellido": "Garcia"\n  }\n}`,
+          explanation: `
+            <ul style="margin:0; padding-left:20px;">
+              <li><strong>event.get("datos_usuario", {}):</strong> El evento general tiene varias secciones. Usamos esto para acceder a la carpeta correcta antes de buscar el nombre. El {} vacío nos protege de que la aplicación explote si esa sección no existe.</li>
+              <li><strong>.lower():</strong> Transformación lógica de negocio obligatoria. Transforma todo a letras minúsculas para que el usuario no pueda crear nombres duplicados en la base de datos usando mayúsculas intercaladas.</li>
+            </ul>
+          `
+        },
+        4: {
+          title: "Misión 4: API Gateway (Cuerpo de texto)",
+          instructions: `
+            <h4 style="margin:0 0 8px 0; color: var(--focus);">Misión 4: E-Commerce y API Gateway</h4>
+            <p style="margin:0 0 8px 0;"><strong>¿Qué hay que hacer?</strong> Cuando la Lambda se conecta a internet como API, los datos viajan dentro de un paquete de texto llamado 'body'. Para poder leerlos, debemos extraer el 'body' y usar <code>json.loads()</code> para traducir ese texto a un diccionario de Python. Copia el código al editor y prueba a modificar el importe en el JSON oculto.</p>
+          `,
+          referenceCode: `import json\n\ndef lambda_handler(event, context):\n    cuerpo_peticion = event.get("body", "{}")\n    datos_compra = json.loads(cuerpo_peticion)\n    precio_original = datos_compra.get("precio", 100)\n    descuento = datos_compra.get("descuento_porcentaje", 20)\n    ahorro = precio_original * (descuento / 100)\n    precio_final = precio_original - ahorro\n    print(f"Precio original: {precio_original} - Aplicando descuento del {descuento}%")\n    return {\n        "precio_a_pagar": precio_final,\n        "dinero_ahorrado": ahorro,\n        "moneda": "EUR"\n    }`,
+          code: `import json\n\ndef lambda_handler(event, context):\n    `,
+          event: `{\n  "httpMethod": "POST",\n  "body": "{\\"precio\\": 120, \\"descuento_porcentaje\\": 15}"\n}`,
+          explanation: `
+            <ul style="margin:0; padding-left:20px;">
+              <li><strong>json.loads:</strong> Es la herramienta clave para las APIs. El cliente manda todo el body como un bloque gigante de texto por internet. Esta función lo analiza y lo vuelve a convertir en un diccionario limpio que Python pueda leer.</li>
+              <li><strong>Matemáticas directas:</strong> AWS Lambda tiene capacidad total para calcular lógica de negocio como precios e impuestos instantáneamente, liberando de esta carga a los teléfonos de los clientes.</li>
+            </ul>
+          `
+        },
+        5: {
+          title: "Misión 5: Sensores IoT (Buscando en Listas)",
+          instructions: `
+            <h4 style="margin:0 0 8px 0; color: var(--focus);">Misión 5: Alertas de Camiones (Listas de Sensores)</h4>
+            <p style="margin:0 0 8px 0;"><strong>¿Qué hay que hacer?</strong> Los sensores no envían un solo número, sino una lista entera de las lecturas de los últimos minutos dentro del bloque 'detail'. Tu objetivo es extraer la lista 'temperaturas' y usar la función <code>max()</code> para ver si el pico más alto supera los 5 grados. Fíjate en el código de referencia y escríbelo abajo.</p>
+          `,
+          referenceCode: `def lambda_handler(event, context):\n    detalles = event.get("detail", {})\n    camion_id = detalles.get("id_camion", "Camion-X")\n    lista_temperaturas = detalles.get("temperaturas", [0])\n    temperatura_maxima = max(lista_temperaturas)\n    estado = "OK"\n    alerta = False\n    if temperatura_maxima > 5:\n        estado = "PELIGRO"\n        alerta = True\n        print(f"ALERTA ENVIADA AL CONDUCTOR DEL {camion_id}")\n    else:\n        print(f"Temperatura maxima estable ({temperatura_maxima} grados) en el {camion_id}.")\n    return {\n        "camion": camion_id,\n        "temperatura_peligrosa": temperatura_maxima,\n        "estado": estado,\n        "enviar_alerta": alerta\n    }`,
+          code: `def lambda_handler(event, context):\n    `,
+          event: `{\n  "source": "aws.iot",\n  "detail-type": "Sensor de Temperatura",\n  "detail": {\n    "id_camion": "Camion-Frigo-004",\n    "temperaturas": [2, 3, 2, 8]\n  }\n}`,
+          explanation: `
+            <ul style="margin:0; padding-left:20px;">
+              <li><strong>max():</strong> Una función rapidísima de Python que analiza todos los números de una lista y te devuelve el mayor. Nos ahorra tener que revisar los sensores uno por uno con un bucle.</li>
+              <li><strong>Variables por defecto:</strong> Declaramos que el estado está 'OK' y la alerta desactivada antes de comprobar nada, asumiendo siempre el mejor escenario por eficiencia de memoria.</li>
+              <li><strong>enviar_alerta True:</strong> Devolver esta bandera booleana le permite al siguiente sistema de AWS enviar un SMS automático al conductor sin que tengamos que programarlo aquí.</li>
+            </ul>
+          `
+        }
+      };
+
+      const costExamples = [
+        { 
+          title: "Bot de Telegram Básico", 
+          desc: "Un bot sencillo que responde mensajes por HTTP. Muy poco tráfico.", 
+          metrics: "50,000 ev | 128MB | 100ms | 4KB", 
+          result: "$0.00 al mes (Capa Gratuita)", 
+          note: "Al usar poca Memoria RAM y no superar el millón de peticiones, AWS no cobra nada por el Cómputo. El Coste Trigger de API Gateway es absorbido por la capa gratuita." 
+        },
+        { 
+          title: "Procesador de Video Pesado", 
+          desc: "Pipeline que comprime vídeos pesados subidos al disco duro virtual.", 
+          metrics: "15,000 ev | 3008MB | 9000ms | 512KB", 
+          result: "$6.75 al mes aproximado", 
+          note: "Aunque hay pocos eventos, cada video exige casi el máximo de Memoria RAM y tarda mucho en procesarse. El Coste Cómputo es el único gasto real aquí." 
+        },
+        { 
+          title: "E-commerce en Black Friday", 
+          desc: "Tienda online usa una Cola SQS para absorber una Carga masiva de pedidos.", 
+          metrics: "2,000,000 ev | 1536MB | 600ms | 64KB", 
+          result: "$3.31 al mes aproximado", 
+          note: "Al usar una Cola SQS, pagamos un pequeño Coste Trigger por encolar los mensajes. Lambda se invoca por lotes. El Coste Total es muy bajo gracias a que SQS junta los mensajes." 
+        },
+        { 
+          title: "Cron Job de Limpieza Nocturna", 
+          desc: "Regla EventBridge dispara una Lambda de madrugada para borrar registros de la base de datos.", 
+          metrics: "30 ev | 256MB | 5000ms | 1KB", 
+          result: "$0.00 al mes (Capa Gratuita)", 
+          note: "Un evento al día son unos 30 eventos al mes. El Coste Trigger de EventBridge es nulo aquí. Automatización de Ops a coste cero." 
+        },
+        { 
+          title: "API de Autenticación Continua", 
+          desc: "API Gateway recibe logins de una aplicación móvil muy popular. Millones de eventos ultracortos.", 
+          metrics: "5,000,000 ev | 256MB | 150ms | 4KB", 
+          result: "$15.60 al mes aproximado", 
+          note: "El Coste Trigger de API Gateway es el factor principal tras la capa gratuita. Como el código es muy rápido y usa poca Memoria RAM, el Coste Cómputo es de solo ~$0.80." 
+        },
+        { 
+          title: "Reportes Financieros en S3", 
+          desc: "Se suben miles de excels a S3 a final de mes. Lambda genera un PDF consolidado con ellos.", 
+          metrics: "100,000 ev | 2048MB | 4000ms | 128KB", 
+          result: "$13.33 al mes aproximado", 
+          note: "El volumen de Peticiones es bajo, así que es gratis. El grueso de la facturación es el Coste Cómputo: 2 GB de RAM durante 4 segundos multiplicados 100,000 veces." 
+        },
+        { 
+          title: "Votaciones en Directo de un Reality Show", 
+          desc: "Un programa de TV pide a los espectadores que voten desde su teléfono móvil. Entran millones de clics en solo dos minutos.", 
+          metrics: "10,000,000 ev | 512MB | 200ms | 2KB", 
+          result: "$38.53 al mes aproximado", 
+          note: "Al recibir millones de clics de golpe, el Coste Trigger se dispara bastante. Como solo guardamos un voto simple, el proceso es rapidísimo usando poca RAM." 
+        },
+        { 
+          title: "Generación de Entradas de Concierto con Código QR", 
+          desc: "Cuando la gente paga, una cola virtual los organiza para ir generando un PDF con su código QR personalizado sin saturar los servidores.", 
+          metrics: "200,000 ev | 2048MB | 1500ms | 256KB", 
+          result: "$4.99 al mes aproximado", 
+          note: "La cola SQS cobra un Coste Trigger casi nulo por organizar a la gente. Generar PDFs y QRs es un trabajo pesado para el procesador, el Coste Cómputo será el rey de la factura." 
+        },
+        { 
+          title: "App de Delivery actualizando el GPS en Tiempo Real", 
+          desc: "Miles de repartidores envían sus coordenadas GPS a la central cada 10 segundos para que los clientes vean dónde está su comida en el mapa.", 
+          metrics: "15,000,000 ev | 128MB | 50ms | 1KB", 
+          result: "$4.30 al mes aproximado (Con EventBridge)", 
+          note: "Al elegir un servicio de enrutamiento barato como EventBridge en lugar de API Gateway, el Coste Trigger es mucho menor. Mantener millones de operaciones mensuales es extremadamente barato." 
+        }
+      ];
+
+      let appState = loadState();
+      let pyodideInstance = null;
+
+      function loadState() {
+        let stored = localStorage.getItem(APP_STATE_KEY);
+        let s = stored ? JSON.parse(stored) : {};
+        return {
+          isLoggedIn: s.isLoggedIn || false,
+          prefs: s.prefs || { theme: "aws-light", fontScale: "normal", density: "comfortable" },
+          activeTab: s.activeTab || "block-1",
+          atomization: s.atomization || {},
+          cost: s.cost || { activeScenarioId: scenarioTemplates[0].id, form: {...scenarioTemplates[0].defaults, trigger: scenarioTemplates[0].trigger}, cases: {}, customCases: [] },
+          python: s.python || { code: pythonMissions[1].code, event: pythonMissions[1].event, hasRun: false }
+        };
+      }
+
+      function saveState() {
+        localStorage.setItem(APP_STATE_KEY, JSON.stringify(appState));
+        updateMetrics();
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        applyPrefs(appState.prefs);
+        bindSettings();
+        buildTabs();
+        buildExamples();
+        buildCostExamples();
+        buildBlock1();
+        buildBlock2();
+        buildBlock3();
+        updateMetrics();
+
+        if (appState.isLoggedIn) {
+          document.getElementById("aws-login-screen").style.display = "none";
+          document.getElementById("aws-main-app").style.display = "flex";
+        }
+
+        document.getElementById("aws-login-form").addEventListener("submit", (e) => {
+          e.preventDefault();
+          appState.isLoggedIn = true;
+          saveState();
+          document.getElementById("aws-login-screen").style.display = "none";
+          document.getElementById("aws-main-app").style.display = "flex";
+        });
+
+        document.getElementById("reset-app").addEventListener("click", () => {
+          if (confirm("¿Borrar todo el progreso y recargar?")) {
+            localStorage.removeItem(APP_STATE_KEY);
+            location.reload();
+          }
+        });
+      });
+
+      function bindSettings() {
+        const els = ["theme-select", "font-scale-select", "density-select"].map(id => document.getElementById(id));
+        els[0].value = appState.prefs.theme; els[1].value = appState.prefs.fontScale; els[2].value = appState.prefs.density;
+
+        els.forEach(el => {
+          el.addEventListener("change", () => {
+            appState.prefs = { theme: els[0].value, fontScale: els[1].value, density: els[2].value };
+            applyPrefs(appState.prefs);
+            saveState();
+          });
+        });
+      }
+
+      function applyPrefs(prefs) {
+        document.body.className = `theme-${prefs.theme} scale-${prefs.fontScale} density-${prefs.density}`;
+      }
+
+      function buildTabs() {
+        const navItems = document.querySelectorAll(".nav-item");
+        const panels = document.querySelectorAll(".tab-panel");
+        const switchTab = (target) => {
+          appState.activeTab = target; saveState();
+          
+          navItems.forEach(btn => btn.classList.toggle("active", btn.dataset.tabTarget === target));
+          
+          panels.forEach(p => { 
+            if(p.dataset.panel === target) {
+              p.classList.add("active");
+            } else {
+              p.classList.remove("active");
+            }
+          });
+          
+          const titleEl = document.getElementById("active-tab-title");
+          const descEl = document.getElementById("active-tab-description");
+          if (titleEl && descEl) {
+            if (target === "block-1") { titleEl.innerText = "Práctica: Identificación y atomización"; descEl.innerText = "Analiza fragmentos de código, separa responsabilidades y suma puntos."; }
+            if (target === "block-2") { titleEl.innerText = "Práctica: Costes y Arquitecturas"; descEl.innerText = "Calculadora interactiva simulando facturación serverless."; }
+            if (target === "block-3") { titleEl.innerText = "Práctica: Runtime Python"; descEl.innerText = "Entorno WebAssembly para invocar funciones Lambda localmente."; }
+          }
+        };
+        navItems.forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tabTarget)));
+        switchTab(appState.activeTab);
+      }
+
+      function buildExamples() {
+        const list = document.getElementById("examples-list");
+        list.innerHTML = atomExamples.map(ex => {
+          let diagramHtml = '<div class="atom-diagram">';
+          ex.atoms.forEach((atomStr, i) => {
+            const parts = atomStr.split(':');
+            const cat = parts[0].trim();
+            const text = parts[1] ? parts[1].trim() : '';
+            const icon = getAwsIcon(text, cat);
+            diagramHtml += '<div class="atom-node"><span class="icon">' + icon + '</span><span class="cat">' + cat + '</span><span style="max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + text + '">' + text + '</span></div>';
+            if (i < ex.atoms.length - 1) diagramHtml += '<div class="atom-arrow">→</div>';
+          });
+          diagramHtml += '</div>';
+
+          return `
+          <div class="aws-card" style="border-color: var(--link);">
+            <div class="aws-card-header" style="background: var(--surface); color: var(--link);">
+              <div>
+                <span class="tag" style="background: rgba(0,115,187,0.1); color: var(--link);">${ex.stack}</span>
+                <span style="margin-left: 8px;">${ex.title}</span>
+              </div>
+            </div>
+            <div class="aws-card-body" style="padding-top: 0;">
+              <pre class="code-block">${makeClickableCode(ex.code)}</pre>
+              <div style="margin-top: 12px;">
+                <span class="mini-label">Desglose correcto y Arquitectura:</span>
+                <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-soft);">
+                  ${ex.atoms.map(a => `<li>${a}</li>`).join("")}
+                </ul>
+                ${diagramHtml}
+              </div>
+            </div>
+          </div>
+        `}).join("");
+      }
+
+      function buildCostExamples() {
+        const list = document.getElementById("cost-examples-list");
+        list.innerHTML = costExamples.map(ex => `
+          <div class="aws-card" style="border-color: var(--success);">
+            <div class="aws-card-header" style="background: var(--surface); color: var(--success);">
+              <div>
+                <span class="tag" style="background: rgba(29,129,2,0.1); color: var(--success);">Ejemplo Resuelto</span>
+                <span style="margin-left: 8px;">${ex.title}</span>
+              </div>
+            </div>
+            <div class="aws-card-body" style="padding-top: 12px;">
+              <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft); line-height: 1.4;">${makeClickableCode(ex.desc)}</p>
+              <span style="font-size:12px; color:var(--text); font-family: monospace; background: var(--surface-muted); padding: 4px; border-radius: 4px; display:inline-block;">${ex.metrics}</span>
+              <div style="margin-top: 12px; padding: 12px; background: rgba(29,129,2,0.05); border-radius: 4px; border-left: 3px solid var(--success);">
+                <span class="mini-label" style="color: var(--success);">Resultado Mensual:</span>
+                <strong style="display:block; font-size: 16px; margin: 4px 0;">${ex.result}</strong>
+                <p style="margin: 8px 0 0; font-size: 13px; color: var(--text-soft); line-height: 1.5;"><strong>Análisis de Arquitecto AWS:</strong><br/>${makeClickableCode(ex.note)}</p>
+              </div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function buildBlock1() {
+        const list = document.getElementById("atomization-list");
+        list.innerHTML = atomizationSnippets.map(snip => `
+          <div class="aws-card">
+            <div class="aws-card-header">
+              <div>
+                <span class="tag orange">${snip.stack}</span>
+                <span style="margin-left: 8px;">${snip.title}</span>
+              </div>
+              <div><span class="mini-label">Score:</span> <strong id="score-${snip.id}" style="color:var(--accent);">0 pts</strong></div>
+            </div>
+            <div class="aws-card-body" style="padding-top: 0;">
+              <p style="font-size:13px; color:var(--text-soft); margin: 12px 0;">${makeClickableCode(snip.prompt)}</p>
+              <pre class="code-block">${makeClickableCode(snip.code)}</pre>
+              
+              <div id="diagram-${snip.id}" class="atom-diagram" style="display:none;"></div>
+              
+              <div class="btn-row" style="margin-top: 16px;">
+                <button class="btn btn-secondary" type="button" onclick="addAtom('${snip.id}')">Añadir Tarea (Átomo)</button>
+                <button class="btn btn-ghost" type="button" onclick="resetAtom('${snip.id}')">Vaciar</button>
+              </div>
+              <div style="display: grid; gap: 8px; margin-top: 12px;" id="atom-list-${snip.id}"></div>
+            </div>
+          </div>
+        `).join("");
+
+        atomizationSnippets.forEach(snip => renderAtoms(snip.id));
+      }
+
+      window.addAtom = (id) => {
+        if(!appState.atomization[id]) appState.atomization[id] = [];
+        appState.atomization[id].push({cat: "trigger", text: ""});
+        renderAtoms(id); saveState();
+      };
+      window.resetAtom = (id) => { appState.atomization[id] = []; renderAtoms(id); saveState(); };
+
+      window.updateAtomText = (id, idx, val) => { appState.atomization[id][idx].text = val; saveState(); updateAtomScore(id); };
+      window.updateAtomCat = (id, idx, val) => { appState.atomization[id][idx].cat = val; saveState(); updateAtomScore(id); };
+      window.removeAtom = (id, idx) => { appState.atomization[id].splice(idx, 1); renderAtoms(id); saveState(); };
+
+      function renderAtoms(id) {
+        const container = document.getElementById(`atom-list-${id}`);
+        const diagramContainer = document.getElementById(`diagram-${id}`);
+        const atoms = appState.atomization[id] || [];
+        
+        container.innerHTML = atoms.map((atom, idx) => {
+          const safeCat = atom.cat || 'trigger';
+          const safeText = atom.text || '';
+          return `
+          <div class="atom-row">
+            <select onchange="updateAtomCat('${id}', ${idx}, this.value)">
+              <option value="trigger" ${safeCat==='trigger'?'selected':''}>Trigger</option>
+              <option value="input" ${safeCat==='input'?'selected':''}>Entrada</option>
+              <option value="transform" ${safeCat==='transform'?'selected':''}>Transformación</option>
+              <option value="persistence" ${safeCat==='persistence'?'selected':''}>Persistencia</option>
+              <option value="output" ${safeCat==='output'?'selected':''}>Salida</option>
+            </select>
+            <input type="text" value="${safeText.replace(/"/g, '&quot;')}" oninput="updateAtomText('${id}', ${idx}, this.value)" placeholder="Descripción de la tarea..." />
+            <button class="btn btn-ghost" type="button" onclick="removeAtom('${id}', ${idx})">X</button>
+          </div>
+        `}).join("");
+        
+        if (atoms.length > 0) {
+          diagramContainer.style.display = "flex";
+          let diagramHtml = "";
+          atoms.forEach((atom, i) => {
+             const safeCat = atom.cat || 'trigger';
+             const safeText = atom.text || '';
+             const icon = getAwsIcon(safeText, safeCat);
+             const catLabel = safeCat.charAt(0).toUpperCase() + safeCat.slice(1);
+             diagramHtml += '<div class="atom-node"><span class="icon">' + icon + '</span><span class="cat">' + catLabel + '</span><span style="max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + safeText + '">' + (safeText || '...') + '</span></div>';
+             if (i < atoms.length - 1) diagramHtml += '<div class="atom-arrow">→</div>';
+          });
+          diagramContainer.innerHTML = diagramHtml;
+        } else {
+          diagramContainer.style.display = "none";
+          diagramContainer.innerHTML = "";
+        }
+        
+        updateAtomScore(id);
+      }
+
+      function updateAtomScore(id) {
+        const atoms = appState.atomization[id] || [];
+        let score = atoms.reduce((s, a) => s + ((a.text || '').length > 5 ? 1.5 : 0), 0);
+        const scoreEl = document.getElementById(`score-${id}`);
+        if (scoreEl) scoreEl.innerText = `${score} pts`;
+      }
+
+      function buildBlock2() {
+        const triggerSel = document.getElementById("trigger-select");
+        triggerSel.innerHTML = Object.entries(triggerCatalog).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join("");
+        
+        document.getElementById("scenario-pills").innerHTML = scenarioTemplates.map(sc => `
+          <div class="scenario-pill ${sc.id===appState.cost.activeScenarioId?'active':''}" onclick="loadScenario('${sc.id}')">
+            <strong>${sc.name}</strong><p style="margin: 4px 0 0; font-size: 12px; color: var(--text-soft);">${sc.description}</p>
+          </div>
+        `).join("");
+
+        ["events", "memory", "duration", "payload"].forEach(k => {
+          const inp = document.getElementById(`${k}-input`);
+          inp.addEventListener("input", () => {
+            appState.cost.form[k] = parseFloat(inp.value);
+            saveState(); calcCost();
+          });
+        });
+        triggerSel.addEventListener("change", () => { appState.cost.form.trigger = triggerSel.value; saveState(); calcCost(); drawDiagram(); });
+
+        renderCostCases();
+        syncCostForm();
+      }
+
+      window.loadScenario = (id) => {
+        appState.cost.activeScenarioId = id;
+        const sc = scenarioTemplates.find(s => s.id === id);
+        appState.cost.form = {...sc.defaults, trigger: sc.trigger};
+        saveState(); syncCostForm(); buildBlock2();
+      };
+
+      function syncCostForm() {
+        const form = appState.cost.form;
+        document.getElementById("trigger-select").value = form.trigger;
+        document.getElementById("events-input").value = form.events;
+        document.getElementById("memory-input").value = form.memory;
+        document.getElementById("duration-input").value = form.duration;
+        document.getElementById("payload-input").value = form.payload;
+        calcCost(); drawDiagram();
+      }
+
+      function calcCost() {
+        const f = appState.cost.form;
+        document.getElementById("events-output").innerText = f.events.toLocaleString();
+        document.getElementById("memory-output").innerText = `${f.memory} MB`;
+        document.getElementById("duration-output").innerText = `${f.duration} ms`;
+        document.getElementById("payload-output").innerText = `${f.payload} KB`;
+
+        const trig = triggerCatalog[f.trigger];
+        const chunks = Math.max(1, Math.ceil(f.payload / trig.payloadChunkKb));
+        const mult = trig.requestMultiplier || 1;
+        const billTrig = Math.max((f.events * chunks * mult) - trig.freeTier, 0);
+        const costTrig = (billTrig / 1000000) * trig.costPerMillion;
+        
+        const reqBill = Math.max(f.events - 1000000, 0);
+        const costReq = (reqBill / 1000000) * 0.2;
+
+        const gbs = f.events * (f.duration/1000) * (f.memory/1024);
+        const costComp = Math.max(gbs - 400000, 0) * 0.0000166667;
+
+        document.getElementById("cost-summary").innerHTML = `
+          <div class="cost-box"><span class="mini-label">Coste Trigger</span><div class="cost-total">$${costTrig.toFixed(2)}</div></div>
+          <div class="cost-box"><span class="mini-label">Coste Peticiones</span><div class="cost-total">$${costReq.toFixed(2)}</div></div>
+          <div class="cost-box"><span class="mini-label">Coste Cómputo</span><div class="cost-total">$${costComp.toFixed(2)}</div></div>
+          <div class="cost-box" style="background: var(--accent-soft); border-color: var(--accent); color: var(--accent);">
+            <span class="mini-label" style="color:var(--accent);">Coste Total / Mes</span><div class="cost-total" style="font-weight:700;">$${(costTrig+costReq+costComp).toFixed(2)}</div>
+          </div>
+        `;
+      }
+
+      function drawDiagram() {
+        const sc = scenarioTemplates.find(s => s.id === appState.cost.activeScenarioId);
+        const trg = triggerCatalog[appState.cost.form.trigger];
+        let nodes = sc.nodes.map((n, i) => i===1 ? {title: trg.label, body: trg.notes} : n);
+        document.getElementById("diagram-stage").innerHTML = `
+          <div class="diagram-flow">
+            ${nodes.map(n => `<div class="diagram-node"><strong style="display:block; margin-bottom:4px;">${n.title}</strong><span style="color:var(--text-soft); font-size:12px;">${n.body}</span></div>`).join("")}
+          </div>
+        `;
+      }
+
+      function renderCostCases() {
+        const customCases = appState.cost.customCases || [];
+        const allCases = [...costCases, ...customCases];
+
+        let html = allCases.map(c => {
+          const done = appState.cost.cases[c.id]?.done || false;
+          const note = appState.cost.cases[c.id]?.note || "";
+          const isCustom = c.id.startsWith('custom-');
+          
+          return `
+          <div class="aws-card">
+            <div class="aws-card-header">
+              <span>${c.label} ${isCustom ? '<span style="font-size:11px; font-weight:normal; background:var(--surface-muted); padding:2px 6px; border-radius:4px; margin-left:6px;">Personal</span>' : ''}</span>
+              <button class="btn btn-secondary" style="padding: 4px 10px;" onclick="loadCaseData(${c.events}, ${c.memory}, ${c.duration}, ${c.payload}, '${c.scenarioId}')">Simular variables</button>
+            </div>
+            <div class="aws-card-body" style="padding-top: 12px;">
+              <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-soft); line-height: 1.4;">${makeClickableCode(c.desc)}</p>
+              
+              <span style="font-size:12px; color:var(--text); font-family: monospace; background: var(--surface-muted); padding: 4px; border-radius: 4px; display:inline-block;">${c.events.toLocaleString()} ev | ${c.memory}MB | ${c.duration}ms | ${c.payload}KB</span>
+              
+              <textarea style="margin-top: 12px;" placeholder="Resultado mensual y notas del alumno..." oninput="saveCaseNote('${c.id}', this.value)">${note}</textarea>
+              
+              <div style="display:flex; justify-content: space-between; align-items:center; margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" ${done?'checked':''} onchange="toggleCase('${c.id}', this.checked)" />
+                  <span style="font-weight:normal;">Análisis Completado</span>
+                </label>
+                ${isCustom ? `<button class="btn btn-ghost" onclick="deleteCustomCase('${c.id}')" style="color:var(--danger); font-size:12px; padding:0;">Eliminar</button>` : ''}
+              </div>
+            </div>
+          </div>
+        `}).join("");
+
+        html += `
+          <div class="aws-card" style="border: 1px dashed var(--border-strong); background: transparent; display: flex; align-items: center; justify-content: center; padding: 20px; cursor:pointer;" onclick="addCustomCase()">
+            <div style="text-align: center; color: var(--link);">
+              <span style="font-size: 24px; display: block; margin-bottom: 8px;">+</span>
+              <strong>Crear Caso Propio</strong>
+              <p style="font-size: 12px; color: var(--text-soft); margin-top: 4px;">Guardar los valores actuales de la calculadora arriba como un nuevo caso para estudiar.</p>
+            </div>
+          </div>
+        `;
+
+        document.getElementById("case-list").innerHTML = html;
+      }
+
+      window.loadCaseData = (ev, mem, dur, pay, scid) => {
+        appState.cost.form = { events: ev, memory: mem, duration: dur, payload: pay, trigger: scenarioTemplates.find(s=>s.id===scid).trigger };
+        appState.cost.activeScenarioId = scid;
+        saveState(); buildBlock2();
+        document.getElementById("cost-summary").scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
+      
+      window.saveCaseNote = (id, val) => { if(!appState.cost.cases[id]) appState.cost.cases[id]={}; appState.cost.cases[id].note = val; saveState(); };
+      window.toggleCase = (id, val) => { if(!appState.cost.cases[id]) appState.cost.cases[id]={}; appState.cost.cases[id].done = val; saveState(); };
+
+      window.addCustomCase = () => {
+        const label = prompt("Título para tu Caso de Uso personalizado:");
+        if (!label) return;
+        
+        const desc = prompt("Describe la situación o arquitectura de forma breve para luego poder analizarla:");
+        if (!desc) return;
+
+        if (!appState.cost.customCases) appState.cost.customCases = [];
+        
+        const newId = 'custom-' + Date.now();
+        appState.cost.customCases.push({
+          id: newId,
+          label: label,
+          desc: desc,
+          scenarioId: appState.cost.activeScenarioId,
+          events: appState.cost.form.events,
+          memory: appState.cost.form.memory,
+          duration: appState.cost.form.duration,
+          payload: appState.cost.form.payload
+        });
+        
+        saveState();
+        renderCostCases();
+      };
+
+      window.deleteCustomCase = (id) => {
+        if(confirm("¿Estás seguro de que quieres eliminar este caso de uso personalizado?")) {
+          appState.cost.customCases = appState.cost.customCases.filter(c => c.id !== id);
+          saveState();
+          renderCostCases();
+        }
+      };
+
+      function buildBlock3() {
+        document.getElementById("python-steps").innerHTML = pythonSteps.map((s,i) => `<li class="step-item" id="py-step-${i}"><strong style="display:block; margin-bottom:4px; font-size: 13px;">${s.title}</strong><span style="font-size:12px; color:var(--text-soft);">${s.body}</span></li>`).join("");
+        
+        if (!appState.python.code || appState.python.code.trim() === "") {
+          loadPythonMission(1, false);
+        } else {
+          document.getElementById("python-code").value = appState.python.code;
+          document.getElementById("event-input").value = appState.python.event;
+          
+          let currentMission = 1;
+          for (let i = 1; i <= 5; i++) {
+            if (appState.python.code === pythonMissions[i].code) currentMission = i;
+          }
+          renderMissionInstructions(currentMission);
+        }
+
+        const cEdit = document.getElementById("python-code");
+        const eEdit = document.getElementById("event-input");
+
+        cEdit.addEventListener("input", () => { appState.python.code = cEdit.value; saveState(); });
+        eEdit.addEventListener("input", () => { appState.python.event = eEdit.value; saveState(); });
+
+        document.getElementById("load-pyodide").addEventListener("click", loadPyodideRuntime);
+        document.getElementById("invoke-button").addEventListener("click", executePython);
+      }
+
+      function renderMissionInstructions(missionId) {
+        const mission = pythonMissions[missionId];
+        
+        let finalInstructions = mission.instructions;
+        finalInstructions += '<h5 style="margin-top:16px; color:var(--focus); font-size:14px;">Código de Referencia a escribir (Pulsa las palabras para entenderlas):</h5>';
+        finalInstructions += '<pre class="code-block" style="background:#111821; padding:12px; margin-top:8px; border-radius:4px;">' + makeClickableCode(mission.referenceCode) + '</pre>';
+        finalInstructions += '<div style="margin-top:12px; padding:12px; background:var(--surface-alt); border-radius:4px; font-size:13px; line-height:1.5;">';
+        finalInstructions += '<strong style="color:var(--text); display:block; margin-bottom:8px;">Explicación paso a paso (El por qué):</strong>';
+        finalInstructions += mission.explanation;
+        finalInstructions += '</div>';
+
+        document.getElementById("mission-instructions").innerHTML = finalInstructions;
+
+        for (let i = 1; i <= 5; i++) {
+          const btn = document.getElementById("btn-mission-" + i);
+          if (btn) {
+            btn.style.background = missionId === i ? 'var(--accent-soft)' : '';
+            btn.style.color = missionId === i ? 'var(--accent)' : '';
+            btn.style.borderColor = missionId === i ? 'var(--accent)' : '';
+          }
+        }
+      }
+
+      window.loadPythonMission = (missionId, confirmReset = true) => {
+        if (confirmReset) {
+            if (!confirm("Esto reemplazará tu código actual en el editor por el del tutorial. ¿Continuar?")) return;
+        }
+        
+        const mission = pythonMissions[missionId];
+        renderMissionInstructions(missionId);
+        
+        document.getElementById("python-code").value = mission.code;
+        document.getElementById("event-input").value = mission.event;
+        
+        appState.python.code = mission.code;
+        appState.python.event = mission.event;
+        saveState();
+      };
+
+      async function loadPyodideRuntime() {
+        const stat = document.getElementById("runtime-status");
+        const btn = document.getElementById("invoke-button");
+        stat.innerText = "Descargando entorno WebAssembly (Pyodide)...";
+        document.getElementById("py-step-0").classList.add("active");
+        try {
+          if (!window.loadPyodide) {
+            const script = document.createElement("script");
+            script.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
+            document.head.append(script);
+            await new Promise(r => script.onload = r);
+          }
+          pyodideInstance = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/" });
+          stat.innerText = "Entorno Python 3 activo. Listo para testear.";
+          btn.disabled = false;
+          document.getElementById("load-pyodide").style.display = "none";
+        } catch(e) {
+          stat.innerText = "Error cargando Pyodide.";
+        }
+      }
+
+      async function executePython() {
+        if(!pyodideInstance) return;
+        document.querySelectorAll(".step-item").forEach(el=>el.classList.remove("active"));
+        document.getElementById("py-step-1").classList.add("active");
+
+        let cText = document.getElementById("python-code").value;
+        
+        cText = cText.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+        
+        const eText = document.getElementById("event-input").value;
+        const rOut = document.getElementById("python-result");
+        const lOut = document.getElementById("python-logs");
+        const eOut = document.getElementById("python-errors");
+
+        rOut.innerText = "Ejecutando..."; lOut.innerText = ""; eOut.innerText = "";
+
+        let parsedEv;
+        try { parsedEv = JSON.parse(eText); } catch(e) { eOut.innerText = "El evento JSON es inválido o está incompleto. Revisa la sintaxis."; return; }
+
+        pyodideInstance.globals.set("user_code", cText);
+        pyodideInstance.globals.set("event_str", JSON.stringify(parsedEv));
+
+        const pyWrapper = `
+import json, sys, io, traceback, os
+os.makedirs('/tmp', exist_ok=True)
+
+scope = {}
+buffer = io.StringIO()
+sys.stdout = buffer
+try:
+    exec(user_code, scope)
+    handler = scope.get("lambda_handler")
+    if not handler: raise ValueError("Falta def lambda_handler(event, context):")
+    res = handler(json.loads(event_str), {"request_id": "simulated-aws-req-id"})
+    out = {"ok": True, "res": res, "logs": buffer.getvalue(), "err": ""}
+except Exception:
+    out = {"ok": False, "res": None, "logs": buffer.getvalue(), "err": traceback.format_exc()}
+finally:
+    sys.stdout = sys.__stdout__
+json.dumps(out)
+        `;
+
+        document.getElementById("py-step-2").classList.add("active");
+        
+        try {
+          const resJson = await pyodideInstance.runPythonAsync(pyWrapper);
+          const res = JSON.parse(resJson);
+          rOut.innerText = res.res ? JSON.stringify(res.res, null, 2) : "Null/None";
+          lOut.innerText = res.logs || "(Sin salidas en consola)";
+          eOut.innerText = res.err || "";
+          appState.python.hasRun = res.ok;
+          saveState();
+          document.getElementById("py-step-3").classList.add("active");
+        } catch(e) {
+          eOut.innerText = String(e);
+        }
+      }
+
+      function updateMetrics() {
+        let ast = 0;
+        Object.values(appState.atomization).forEach(arr => { ast += arr.reduce((s,a)=> s + ((a.text || '').length > 5 ? 1.5 : 0), 0); });
+        const metricAtom = document.getElementById("metric-atomization");
+        if(metricAtom) metricAtom.innerText = `${ast} pts`;
+
+        let cst = Object.values(appState.cost.cases).filter(c => c.done).length;
+        const metricCost = document.getElementById("metric-cost");
+        if(metricCost) metricCost.innerText = `${cst} / 10`;
+
+        const metricPython = document.getElementById("metric-python");
+        if(metricPython) metricPython.innerText = appState.python.hasRun ? "Éxito" : "Pendiente";
+      }
+
+    </script>
+  </body>
+</html>
