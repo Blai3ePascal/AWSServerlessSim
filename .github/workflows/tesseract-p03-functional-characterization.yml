@@ -1,0 +1,140 @@
+name: Tesseract P03 functional characterization
+
+on:
+  push:
+    branches:
+      - research/tesseract-p03
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p03-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional-characterization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture non-benchmark environment provenance
+        run: |
+          rm -rf research/results/P03
+          mkdir -p research/results/P03
+          {
+            echo 'benchmark_valid=false'
+            echo 'timing_metrics_interpretable=false'
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "uname=$(uname -a)"
+            echo "python=$(python3 --version 2>&1)"
+            echo "bazel=$(bazel --version 2>&1)"
+            echo '--- lscpu ---'
+            lscpu || true
+          } > research/results/P03/environment.txt
+
+      - name: Apply validated P02a and P02b instrumentation
+        id: patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p02_layer_stats.py \
+            --upstream-dir external/tesseract-decoder \
+            --report research/results/P03/p02a-patch-report.json
+          python3 scripts/instrument/apply_p02b_layer_trace_cli.py \
+            --upstream-dir external/tesseract-decoder \
+            --report research/results/P03/p02b-patch-report.json
+          git -C external/tesseract-decoder diff --check
+          git -C external/tesseract-decoder diff -- \
+            src/tesseract_trellis.h \
+            src/tesseract_trellis.cc \
+            src/tesseract_trellis.test.cc \
+            src/tesseract_trellis_main.cc \
+            > research/results/P03/instrumentation.patch
+          test -s research/results/P03/instrumentation.patch
+
+      - name: Focused Trellis regression tests
+        id: focused
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P03/trellis-tests.log
+
+      - name: Build instrumented Trellis CLI
+        id: build
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel build //src:tesseract_trellis 2>&1 \
+            | tee ../../research/results/P03/build.log
+
+      - name: Run public functional and structural matrix
+        id: matrix
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/reproduce/p03_trace_matrix.py \
+            --manifest research/experiments/configs/p03_public_one_observable_matrix.json \
+            --upstream-dir external/tesseract-decoder \
+            --output-dir research/results/P03/matrix \
+            --timeout-seconds 240
+
+      - name: Add phase evidence and checksums
+        if: always()
+        run: |
+          cp research/experiments/configs/p03_public_one_observable_matrix.json \
+            research/results/P03/corpus.json
+          cp research/phases/P03_FUNCTIONAL_CHARACTERIZATION.md \
+            research/results/P03/P03_FUNCTIONAL_CHARACTERIZATION.md
+          cp research/diagrams/sources/p03_functional_matrix.dot \
+            research/results/P03/p03_functional_matrix.dot
+          cp research/diagrams/rendered/p03_functional_matrix.svg \
+            research/results/P03/p03_functional_matrix.svg
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\np02b_evidence_sha256=%s\nbenchmark_valid=false\ntiming_metrics_interpretable=false\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
+            "2349eb832f373d753c5cc24945b901f7f92c7ecafc1628c7e955522e91af33f8" \
+            > research/results/P03/github-run.txt
+          find research/results/P03 -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > research/results/P03/SHA256SUMS
+
+      - name: Upload P03 evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p03-functional-evidence-${{ github.run_id }}
+          path: research/results/P03/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P03 functional contract
+        if: always()
+        run: |
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P03 patch application failed."; exit 1; }
+          test "${{ steps.focused.outcome }}" = "success" || { echo "P03 focused Trellis tests failed."; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "P03 Trellis build failed."; exit 1; }
+          test "${{ steps.matrix.outcome }}" = "success" || { echo "P03 functional matrix failed."; exit 1; }
+          echo "P03 functional/structural characterization contract passed."
