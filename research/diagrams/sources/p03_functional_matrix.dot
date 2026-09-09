@@ -1,0 +1,25 @@
+digraph P03 {
+  graph [rankdir=LR, labelloc=t, label="P03 · Trellis functional/structural characterization", fontsize=20];
+  node [shape=box, style="rounded", fontname="Helvetica"];
+  edge [fontname="Helvetica"];
+
+  corpus [label="Pinned public corpus\n1 logical observable only"];
+  surface [label="Surface code\nd=3,5 · p=0.001"];
+  midout [label="Midout color code\nd=3,5 · p=0.001"];
+  superdense [label="Superdense color code\nd=3,5 · p=0.001"];
+  modes [label="Same sampled shots\n3 ranking modes\nbeam=64 · threads=2"];
+  trellis [label="P02b instrumented\nTesseract Trellis"];
+  jsonl [label="Ordered JSONL\nper shot / per layer"];
+  structural [label="Structural metrics only\nfrontier · beam · buckets\ncollapse · kept states"];
+  timing [label="GitHub timing preserved\nbut benchmark_valid=false", shape=note];
+  next [label="P04 controlled-hardware\nperformance characterization"];
+
+  corpus -> surface;
+  corpus -> midout;
+  corpus -> superdense;
+  surface -> modes;
+  midout -> modes;
+  superdense -> modes;
+  modes -> trellis -> jsonl -> structural -> next;
+  jsonl -> timing [style=dashed];
+}
