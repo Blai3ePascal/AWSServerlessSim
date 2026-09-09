@@ -1,0 +1,92 @@
+name: Tesseract P01 public BB smoke
+
+on:
+  push:
+    branches:
+      - research/tesseract-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p01-bb-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-bb-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Verify pinned revision
+        run: |
+          expected=024db1d3b5b038f565c476dd1b51885271f7b0bf
+          actual=$(git -C external/tesseract-decoder rev-parse HEAD)
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+
+      - name: Build both CPU decoders
+        working-directory: external/tesseract-decoder
+        run: bazel build //src:tesseract //src:tesseract_trellis
+
+      - name: Run deterministic P01 smoke reproduction
+        id: p01
+        continue-on-error: true
+        run: |
+          rm -rf research/results/P01
+          python3 scripts/reproduce/p01_bb_smoke.py \
+            --manifest research/experiments/configs/p01_bb_public_corpus.json \
+            --upstream-dir external/tesseract-decoder \
+            --output-dir research/results/P01 \
+            --sample-seed 20260909 \
+            --timeout-seconds 180
+
+      - name: Add provenance and checksums
+        if: always()
+        run: |
+          mkdir -p research/results/P01
+          cp research/experiments/configs/p01_bb_public_corpus.json research/results/P01/corpus.json
+          cp research/phases/P01_BB_REPRODUCTION.md research/results/P01/P01_BB_REPRODUCTION.md
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
+            > research/results/P01/github-run.txt
+          find research/results/P01 -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > research/results/P01/SHA256SUMS
+
+      - name: Upload P01 evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p01-bb-evidence-${{ github.run_id }}
+          path: research/results/P01/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P01 reproduction contract
+        if: always()
+        run: |
+          if [[ "${{ steps.p01.outcome }}" != "success" ]]; then
+            echo "P01 reproduction contract failed. Inspect the uploaded artifact; do not optimise yet."
+            exit 1
+          fi
+          echo "P01 public BB reproduction contract passed."
