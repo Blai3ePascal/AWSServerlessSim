@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "phase": "P01",
+  "source": {
+    "repository": "quantumlib/tesseract-decoder",
+    "commit": "024db1d3b5b038f565c476dd1b51885271f7b0bf",
+    "directory": "testdata/bivariatebicyclecodes"
+  },
+  "purpose": "Public, reproducible smoke corpus for characterising Tesseract/Trellis compatibility before any decoder modification.",
+  "notes": [
+    "All entries below are public upstream circuits at the pinned commit.",
+    "The p value is taken from the exact upstream filename; it is not inferred from a paper figure.",
+    "Tesseract Trellis currently supports at most one logical observable, so these multi-observable BB circuits are expected to be incompatible with Trellis without a scientifically justified transformation.",
+    "P01 must not rewrite or collapse logical observables merely to make Trellis accept an input."
+  ],
+  "cases": [
+    {
+      "id": "bb_q144_x_p1e-4",
+      "path": "testdata/bivariatebicyclecodes/r=6,d=6,p=0.0001,noise=si1000,c=bivariate_bicycle_X,nkd=[[72,12,6]],q=144,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim",
+      "q": 144,
+      "n": 72,
+      "k": 12,
+      "d": 6,
+      "rounds": 6,
+      "p": 0.0001,
+      "basis": "X",
+      "expected_observables": 12
+    },
+    {
+      "id": "bb_q180_x_p1e-4",
+      "path": "testdata/bivariatebicyclecodes/r=10,d=10,p=0.0001,noise=si1000,c=bivariate_bicycle_X,nkd=[[90,8,10]],q=180,iscolored=True,A_poly=x^9+y+y^2,B_poly=x^7+1+x^2.stim",
+      "q": 180,
+      "n": 90,
+      "k": 8,
+      "d": 10,
+      "rounds": 10,
+      "p": 0.0001,
+      "basis": "X",
+      "expected_observables": 8
+    },
+    {
+      "id": "bb_q216_x_p1e-4",
+      "path": "testdata/bivariatebicyclecodes/r=10,d=10,p=0.0001,noise=si1000,c=bivariate_bicycle_X,nkd=[[108,8,10]],q=216,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim",
+      "q": 216,
+      "n": 108,
+      "k": 8,
+      "d": 10,
+      "rounds": 10,
+      "p": 0.0001,
+      "basis": "X",
+      "expected_observables": 8
+    },
+    {
+      "id": "bb_q288_x_p1e-4",
+      "path": "testdata/bivariatebicyclecodes/r=12,d=12,p=0.0001,noise=si1000,c=bivariate_bicycle_X,nkd=[[144,12,12]],q=288,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim",
+      "q": 288,
+      "n": 144,
+      "k": 12,
+      "d": 12,
+      "rounds": 12,
+      "p": 0.0001,
+      "basis": "X",
+      "expected_observables": 12
+    }
+  ]
+}
