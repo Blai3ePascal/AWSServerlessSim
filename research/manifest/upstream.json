@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "upstream_repository": "quantumlib/tesseract-decoder",
+  "upstream_url": "https://github.com/quantumlib/tesseract-decoder",
+  "upstream_commit": "024db1d3b5b038f565c476dd1b51885271f7b0bf",
+  "baseline_date": "2026-09-09",
+  "baseline_scope": [
+    "build",
+    "upstream-tests",
+    "tesseract-cpu",
+    "tesseract-trellis-cpu"
+  ],
+  "excluded_from_scientific_timing": [
+    "github-hosted-runner-latency",
+    "github-hosted-runner-throughput"
+  ],
+  "notes": "No decoder source changes are permitted in P00. Any upstream failure is recorded before remediation."
+}
