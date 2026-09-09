@@ -1,0 +1,129 @@
+name: Tesseract P02b layer trace output
+
+on:
+  push:
+    branches:
+      - research/tesseract-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p02b-layer-trace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  layer-trace-output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Apply P02a and P02b deterministic instrumentation
+        id: patch
+        continue-on-error: true
+        run: |
+          rm -rf research/results/P02b
+          mkdir -p research/results/P02b
+          python3 scripts/instrument/apply_p02_layer_stats.py \
+            --upstream-dir external/tesseract-decoder \
+            --report research/results/P02b/p02a-patch-report.json
+          python3 scripts/instrument/apply_p02b_layer_trace_cli.py \
+            --upstream-dir external/tesseract-decoder \
+            --report research/results/P02b/p02b-patch-report.json
+          git -C external/tesseract-decoder diff --check
+          git -C external/tesseract-decoder diff -- \
+            src/tesseract_trellis.h \
+            src/tesseract_trellis.cc \
+            src/tesseract_trellis.test.cc \
+            src/tesseract_trellis_main.cc \
+            > research/results/P02b/instrumentation.patch
+          test -s research/results/P02b/instrumentation.patch
+
+      - name: Focused Trellis regression tests
+        id: focused
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P02b/trellis-tests.log
+
+      - name: Build instrumented Trellis CLI
+        id: build
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel build //src:tesseract_trellis 2>&1 \
+            | tee ../../research/results/P02b/build.log
+
+      - name: Verify ordered JSONL and semantic equivalence
+        id: verify
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/reproduce/p02b_verify_layer_trace.py \
+            --upstream-dir external/tesseract-decoder \
+            --output-dir research/results/P02b/verification
+
+      - name: Full upstream regression tests
+        id: full
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel test //src/... --test_output=errors 2>&1 \
+            | tee ../../research/results/P02b/full-tests.log
+
+      - name: Add provenance and checksums
+        if: always()
+        run: |
+          mkdir -p research/results/P02b
+          cp research/phases/P02B_LAYER_TRACE_OUTPUT.md research/results/P02b/P02B_LAYER_TRACE_OUTPUT.md
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\nbenchmark_valid=false\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
+            > research/results/P02b/github-run.txt
+          find research/results/P02b -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > research/results/P02b/SHA256SUMS
+
+      - name: Upload P02b evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p02b-layer-trace-evidence-${{ github.run_id }}
+          path: research/results/P02b/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P02b contract
+        if: always()
+        run: |
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P02b patch failed."; exit 1; }
+          test "${{ steps.focused.outcome }}" = "success" || { echo "P02b focused tests failed."; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "P02b build failed."; exit 1; }
+          test "${{ steps.verify.outcome }}" = "success" || { echo "P02b semantic/JSONL verification failed."; exit 1; }
+          test "${{ steps.full.outcome }}" = "success" || { echo "P02b full regression failed."; exit 1; }
+          echo "P02b machine-readable layer trace contract passed."
