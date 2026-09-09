@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "phase": "P03",
+  "source": {
+    "repository": "quantumlib/tesseract-decoder",
+    "commit": "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+  },
+  "execution": {
+    "sample_num_shots": 3,
+    "sample_seed": 20260909,
+    "threads": 2,
+    "beam_width": 64,
+    "ranking_modes": ["mass", "future-detcost", "future-active-detcost"]
+  },
+  "purpose": "Functional and structural Trellis trace matrix. GitHub-hosted timing values are diagnostic only and are not benchmark data.",
+  "cases": [
+    {
+      "id": "surface_x_d3_p1e-3",
+      "family": "surface_code",
+      "distance": 3,
+      "qubits": 17,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/surfacecodes/r=3,d=3,p=0.001,noise=si1000,c=surface_code_X,q=17,gates=cz.stim"
+    },
+    {
+      "id": "surface_x_d5_p1e-3",
+      "family": "surface_code",
+      "distance": 5,
+      "qubits": 49,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/surfacecodes/r=5,d=5,p=0.001,noise=si1000,c=surface_code_X,q=49,gates=cz.stim"
+    },
+    {
+      "id": "midout_color_x_d3_p1e-3",
+      "family": "midout_color_code",
+      "distance": 3,
+      "qubits": 9,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/colorcodes/r=3,d=3,p=0.001,noise=si1000,c=midout_color_code_X,q=9,gates=cz.stim"
+    },
+    {
+      "id": "midout_color_x_d5_p1e-3",
+      "family": "midout_color_code",
+      "distance": 5,
+      "qubits": 23,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/colorcodes/r=5,d=5,p=0.001,noise=si1000,c=midout_color_code_X,q=23,gates=cz.stim"
+    },
+    {
+      "id": "superdense_color_x_d3_p1e-3",
+      "family": "superdense_color_code",
+      "distance": 3,
+      "qubits": 13,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/colorcodes/r=3,d=3,p=0.001,noise=si1000,c=superdense_color_code_X,q=13,gates=cz.stim"
+    },
+    {
+      "id": "superdense_color_x_d5_p1e-3",
+      "family": "superdense_color_code",
+      "distance": 5,
+      "qubits": 37,
+      "p": 0.001,
+      "basis": "X",
+      "expected_observables": 1,
+      "path": "testdata/colorcodes/r=5,d=5,p=0.001,noise=si1000,c=superdense_color_code_X,q=37,gates=cz.stim"
+    }
+  ]
+}
