@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "phase": "P04",
+  "source": {
+    "repository": "quantumlib/tesseract-decoder",
+    "commit": "024db1d3b5b038f565c476dd1b51885271f7b0bf",
+    "stim_commit": "bd60b73525fd5a9b30839020eb7554ad369e4337"
+  },
+  "freeze": {
+    "shots": 256,
+    "seed": 20260909,
+    "event_format": "01",
+    "observable_format": "01"
+  },
+  "benchmark": {
+    "ranking_mode": "mass",
+    "beam_widths": [16, 32, 64, 128, 256],
+    "throughput_beam_width": 64,
+    "thread_counts": [1, 2, 4, 8, 16],
+    "repetitions": 5,
+    "warmup_repetitions": 1
+  },
+  "cases": [
+    {
+      "id": "midout_color_x_d3_p1e-3",
+      "role": "low_pressure_control",
+      "family": "midout_color_code",
+      "distance": 3,
+      "qubits": 9,
+      "p": 0.001,
+      "basis": "X",
+      "path": "testdata/colorcodes/r=3,d=3,p=0.001,noise=si1000,c=midout_color_code_X,q=9,gates=cz.stim"
+    },
+    {
+      "id": "midout_color_x_d5_p1e-3",
+      "role": "narrow_d5",
+      "family": "midout_color_code",
+      "distance": 5,
+      "qubits": 23,
+      "p": 0.001,
+      "basis": "X",
+      "path": "testdata/colorcodes/r=5,d=5,p=0.001,noise=si1000,c=midout_color_code_X,q=23,gates=cz.stim"
+    },
+    {
+      "id": "surface_x_d5_p1e-3",
+      "role": "high_frontier",
+      "family": "surface_code",
+      "distance": 5,
+      "qubits": 49,
+      "p": 0.001,
+      "basis": "X",
+      "path": "testdata/surfacecodes/r=5,d=5,p=0.001,noise=si1000,c=surface_code_X,q=49,gates=cz.stim"
+    },
+    {
+      "id": "superdense_color_x_d5_p1e-3",
+      "role": "high_frontier_long_traversal",
+      "family": "superdense_color_code",
+      "distance": 5,
+      "qubits": 37,
+      "p": 0.001,
+      "basis": "X",
+      "path": "testdata/colorcodes/r=5,d=5,p=0.001,noise=si1000,c=superdense_color_code_X,q=37,gates=cz.stim"
+    }
+  ]
+}
