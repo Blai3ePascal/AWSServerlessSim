@@ -1,0 +1,82 @@
+name: Tesseract reproducibility baseline
+
+on:
+  push:
+    branches:
+      - research/tesseract-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Verify pinned revision
+        run: |
+          expected=024db1d3b5b038f565c476dd1b51885271f7b0bf
+          actual=$(git -C external/tesseract-decoder rev-parse HEAD)
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+
+      - name: Capture environment
+        run: bash research/scripts/capture_environment.sh research/results external/tesseract-decoder
+
+      - name: Build and run upstream tests
+        id: baseline
+        continue-on-error: true
+        run: bash research/scripts/run_baseline.sh external/tesseract-decoder research/results
+
+      - name: Add provenance and checksums
+        if: always()
+        run: |
+          mkdir -p research/results
+          cp research/manifest/upstream.json research/results/upstream.json
+          cp research/docs/KNOWN_LIMITATIONS.md research/results/KNOWN_LIMITATIONS.md
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" > research/results/github-run.txt
+          find research/results -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > research/results/SHA256SUMS
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-baseline-evidence-${{ github.run_id }}
+          path: research/results/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce baseline result
+        if: always()
+        run: |
+          if [[ "${{ steps.baseline.outcome }}" != "success" ]]; then
+            echo "Baseline build/tests failed. Inspect the uploaded evidence artifact."
+            exit 1
+          fi
+          echo "Baseline build/tests passed."
