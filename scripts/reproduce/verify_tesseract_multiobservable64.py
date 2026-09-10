@@ -81,6 +81,7 @@ def main() -> int:
         ("scripts/instrument/apply_p06_expected_upstream_contract.py", "p06-upstream-contract-report.json"),
         ("scripts/instrument/apply_p06b_modern_multiobs_edge_tests.py", "p06b-edge-report.json"),
         ("scripts/instrument/apply_p07_complete_multiobs64_modes.py", "p07-complete-modes-report.json"),
+        ("scripts/instrument/apply_p07b_mode_equivalence_tests.py", "p07b-mode-equivalence-report.json"),
     ]
     for script_rel, report_name in transforms:
         script = harness / script_rel
