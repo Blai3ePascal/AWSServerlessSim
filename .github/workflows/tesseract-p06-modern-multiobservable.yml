@@ -110,6 +110,11 @@ jobs:
           python3 scripts/instrument/apply_p06_modern_multiobs.py \
             --upstream-dir external/tesseract-modern-multiobs \
             --report research/results/P06/p06-patch-report.json
+          # P06 deliberately changes exactly one old behaviour contract:
+          # upstream rejects >1 observable; our experimental MassOnly path supports it.
+          # replace_once inside this script makes the workflow fail if that exact old
+          # test is missing or appears more than once, so this cannot silently hide
+          # unrelated regressions.
           python3 scripts/instrument/apply_p06_expected_upstream_contract.py \
             --upstream-dir external/tesseract-modern-multiobs \
             --report research/results/P06/p06-upstream-contract-report.json
@@ -128,15 +133,15 @@ jobs:
           bazel build //src:tesseract_trellis //src:tesseract_trellis_modern_multiobs_tests 2>&1 \
             | tee ../../research/results/P06/modern-multiobs-build.log
 
-      - name: Run patched modern regression with deliberate contract update
+      - name: Run patched modern compatible upstream regression
         id: regression
         if: steps.build.outcome == 'success'
         continue-on-error: true
         working-directory: external/tesseract-modern-multiobs
         run: |
           set -o pipefail
-          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
-            | tee ../../research/results/P06/modern-patched-upstream-tests.log
+          bazel test //src:tesseract_trellis_tests --test_output=all 2>&1 \
+            | tee ../../research/results/P06/modern-patched-compatible-upstream-tests.log
 
       - name: Run P06 exact multi-observable tests
         id: multiobs
@@ -153,6 +158,7 @@ jobs:
         run: |
           cp research/phases/P06_MODERN_MULTIOBSERVABLE_PORT_DESIGN.md research/results/P06/
           cp research/P05_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/P06/
+          cp research/P06_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/P06/
           printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nmodern_upstream=%s\np05_reference=%s\nbenchmark_valid=false\ntiming_metrics_interpretable=false\n' \
             "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
             "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
@@ -176,8 +182,8 @@ jobs:
           test "${{ steps.baseline.outcome }}" = "success" || { echo "Untouched modern baseline failed."; exit 1; }
           test "${{ steps.p05patch.outcome }}" = "success" || { echo "Could not rebuild P05 reference."; exit 1; }
           test "${{ steps.p05tests.outcome }}" = "success" || { echo "P05 correctness oracle failed."; exit 1; }
-          test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch failed."; exit 1; }
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch or explicit upstream-contract replacement failed."; exit 1; }
           test "${{ steps.build.outcome }}" = "success" || { echo "P06 modern multiobs build failed."; exit 1; }
-          test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern regression failed beyond the deliberate observable-contract update."; exit 1; }
+          test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern regressions failed beyond the one deliberate >1-observable contract change."; exit 1; }
           test "${{ steps.multiobs.outcome }}" = "success" || { echo "P06 exact multiobservable tests failed."; exit 1; }
           echo "P06 modern multi-observable correctness contract passed."
