@@ -73,6 +73,14 @@ Podríamos borrar esa comprobación en dos minutos, pero entonces mezclaríamos 
 
 Si P07a sale verde, P07b será el sitio lógico para abrir el CLI o hacer un runner de shots controlado y empezar a decodificar de verdad.
 
+## Primer rojo de P07a, para no volvernos locos dentro de seis meses
+
+El run `34473807916` **sí encontró bien los ocho circuitos**. El auditor vio 14 ficheros `.stim` con `p=0.001` en la carpeta y seleccionó exactamente los ocho que queríamos. También comprobó los observables 12/8/8/12 y calculó sus hashes.
+
+No llegó a compilar ni a construir ningún decoder. El paso de preparar el árbol falló porque `git diff --check` detectó una línea en blanco extra al final de `src/BUILD` generada por nuestro script de instrumentación.
+
+Es decir: este rojo no significa nada sobre Tesseract, Stim, los BB o el soporte multiobservable. Es una mierda de whitespace de nuestro arnés. La corrección correcta es quitar sólo esa línea extra y volver a ejecutar exactamente el mismo contrato.
+
 ## Si P07a sale verde, qué podemos decir
 
 Podemos decir:
