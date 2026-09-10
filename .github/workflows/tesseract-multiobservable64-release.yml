@@ -1,0 +1,134 @@
+name: Tesseract multiobservable64 release validation
+
+on:
+  push:
+    branches:
+      - research/tesseract-multiobservable64-release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-multiobservable64-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout validation harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture release provenance
+        run: |
+          mkdir -p research/results/MULTIOBS64_RELEASE
+          {
+            echo 'capability=independently reconstructed Trellis support for 0..64 observables'
+            echo 'semantics=joint-MAP complete logical mask'
+            echo 'modern_upstream_sha=024db1d3b5b038f565c476dd1b51885271f7b0bf'
+            echo 'public_history_reference_sha=56996facf54c25e6c08fed19d8902f40e1971f55'
+            echo 'private_code_used=false'
+            echo 'claims_private_identity=false'
+            echo 'benchmark_valid=false'
+            echo 'sinter_used=false'
+            echo 'experiment_probability_present=p=0.001'
+            echo "harness_sha=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "python=$(python3 --version 2>&1)"
+            echo "bazel=$(bazel --version 2>&1)"
+            uname -a
+          } > research/results/MULTIOBS64_RELEASE/environment.txt
+
+      - name: Build and test extension from a clean public upstream checkout
+        id: release_test
+        run: |
+          set -o pipefail
+          bash scripts/build_and_test_tesseract_multiobs64.sh "$GITHUB_WORKSPACE/.multiobs64-release" \
+            2>&1 | tee research/results/MULTIOBS64_RELEASE/build-and-test.log
+
+      - name: Enforce exact correctness result
+        run: |
+          test -f .multiobs64-release/exact-validation-summary.json
+          grep -q '"success": true' .multiobs64-release/exact-validation-summary.json
+          grep -q '"p06_mismatch_count": 0' .multiobs64-release/exact-validation-summary.json
+          test "$(tail -n +2 .multiobs64-release/production-results.tsv | wc -l)" = "640"
+          grep -q '"8": 128' .multiobs64-release/exact-validation-summary.json
+          grep -q '"12": 128' .multiobs64-release/exact-validation-summary.json
+          grep -q '"64": 128' .multiobs64-release/exact-validation-summary.json
+
+      - name: Verify generated patch contains the intended capability
+        run: |
+          test -s .multiobs64-release/tesseract-multiobservable64.patch
+          grep -q 'GenericMultiObs' .multiobs64-release/tesseract-multiobservable64.patch
+          grep -q 'predicted_obs_mask' .multiobs64-release/tesseract-multiobservable64.patch
+          grep -q 'gtest_main' .multiobs64-release/tesseract-multiobservable64.patch
+          git -C .multiobs64-release/tesseract diff --check
+
+      - name: Package review bundle
+        if: always()
+        run: |
+          mkdir -p research/results/MULTIOBS64_RELEASE/review
+          cp research/TESSERACT_MULTIOBSERVABLE64_COMO_MONTAR_Y_PROBAR.md \
+            research/results/MULTIOBS64_RELEASE/review/
+          cp .multiobs64-release/tesseract-multiobservable64.patch \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/exact-validation-summary.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/EXACT_VALIDATION_RESULT.md \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/exact-oracle-summary.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/mismatches.tsv \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/p06.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/p07.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/p07b.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/p07c.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/corpus/corpus.json \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          cp .multiobs64-release/corpus/manifest.tsv \
+            research/results/MULTIOBS64_RELEASE/review/ 2>/dev/null || true
+          {
+            echo '# RELEASE RESULT'
+            echo
+            echo '- implementation: independent, public-source only'
+            echo '- supported observables: 0..64 (L0..L63)'
+            echo '- output semantics: joint-MAP complete logical mask'
+            echo '- original one-observable regression: required PASS'
+            echo '- multiobservable tests: required PASS'
+            echo '- ranking modes / beam_eps: required PASS'
+            echo '- exact corpus: 640 cases'
+            echo '- observable counts: 2, 8, 12, 32, 64'
+            echo '- p=0.001: present in deterministic corpus'
+            echo '- independent exact oracle: required 640/640'
+            echo '- GitHub-hosted timing: NOT a scientific benchmark'
+            echo '- private implementation identity: NOT claimed'
+            echo
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "harness_sha=$GITHUB_SHA"
+          } > research/results/MULTIOBS64_RELEASE/review/README_RESULT.md
+          find research/results/MULTIOBS64_RELEASE -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/MULTIOBS64_RELEASE/SHA256SUMS
+
+      - name: Upload review bundle
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-multiobservable64-release-${{ github.run_id }}
+          path: research/results/MULTIOBS64_RELEASE/
+          if-no-files-found: error
+          retention-days: 30
