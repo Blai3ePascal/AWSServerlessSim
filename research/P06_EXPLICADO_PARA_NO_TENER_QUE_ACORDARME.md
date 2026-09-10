@@ -115,7 +115,25 @@ Las otras pruebas antiguas siguen ejecutándose igual.
 
 Además tenemos nuestras pruebas nuevas, que son mucho más exigentes que simplemente comprobar que el constructor ya no lanza una excepción.
 
-## Qué prueban las 7 pruebas P06
+## Punto de control bueno: P06a
+
+Después de arreglar el contrato del CI, el run `34456384036` quedó **completamente verde**.
+
+Pasó todo esto:
+
+- baseline moderna limpia;
+- reconstrucción de P05;
+- 12/12 pruebas P05;
+- aplicación del parche P06;
+- compilación del moderno modificado;
+- regresiones upstream con la única expectativa obsoleta sustituida explícitamente;
+- 7/7 pruebas P06;
+- empaquetado de evidencias;
+- contrato final del workflow.
+
+Ese run usa el commit `b90e8775d95afdee0dc5ee4e9577565e4d1ca529` y es nuestro punto de control bueno antes de P06b.
+
+## Qué prueban las 7 pruebas P06a
 
 No hace falta memorizar sus nombres. Lo importante es que comprueban estas siete cosas:
 
@@ -126,6 +144,18 @@ No hace falta memorizar sus nombres. Lo importante es que comprueban estas siete
 5. L64 se rechaza porque ya necesitaríamos más de 64 bits.
 6. Los rankings multiobservable que todavía no soportamos fallan claramente en vez de hacer cosas raras.
 7. En problemas diminutos podemos enumerar todas las combinaciones posibles a mano mediante código y el Trellis da exactamente la misma respuesta para todos los síndromes probados.
+
+## P06b: las pruebas de mala leche que añadimos después
+
+P06a verde no significa que dejemos de intentar romperlo. P06b añade cinco comprobaciones más y **no cambia el kernel**:
+
+1. **Empate exacto:** si dos máscaras tienen exactamente la misma masa, debe ganar siempre la máscara numéricamente menor. Así el resultado no depende de casualidades de ordenación.
+2. **Varias explicaciones, una misma máscara:** dos mecanismos distintos que acaban en L0 deben sumar su masa antes de competir contra L1. Esto pilla el error de escoger un camino individual en vez de sumar explicaciones equivalentes.
+3. **`decode()` de verdad:** no basta con que internamente exista una máscara correcta; comprobamos que la API devuelve todos los observables activos, por ejemplo `{2, 11}`, y en orden.
+4. **Detector repetido:** pasar el mismo detector dos veces equivale a cero por paridad. `{D0, D0}` debe comportarse como síndrome vacío.
+5. **Detector inválido:** con varios observables, un detector que ni existe debe seguir marcando `low_confidence`; la nueva ruta no puede saltarse las comprobaciones de entrada.
+
+Si estas cinco pasan, P06 tendrá 12 pruebas propias: las 7 originales más estas 5 de borde.
 
 ## Para qué sirve P05 entonces
 
@@ -142,7 +172,7 @@ La gracia es que P05 nos da algo contra lo que comprobar P06. Si escribiéramos 
 - **Aplicación del parche roja:** nuestro script ya no encaja exactamente con el SHA esperado. Hay que revisar el diff, no parchear a ciegas.
 - **Build P06 rojo:** error real de integración/compilación.
 - **Regresiones antiguas compatibles rojas:** probablemente hemos roto comportamiento que no teníamos intención de cambiar.
-- **Pruebas P06 rojas:** aquí sí hay que sospechar directamente de nuestra lógica multiobservable.
+- **Pruebas P06/P06b rojas:** aquí sí hay que sospechar directamente de nuestra lógica multiobservable o de una expectativa nueva mal planteada.
 - **Sólo `RejectsMoreThanOneObservable` rojo en una versión vieja del workflow:** el CI está usando todavía el contrato contradictorio que ya detectamos.
 
 ## Qué NO podemos decir todavía
@@ -163,4 +193,4 @@ Y tampoco sabemos todavía si esta estructura es la más rápida posible. Ahora 
 
 ## La frase corta para acordarme de todo
 
-**P05 nos dice qué respuesta debería salir. P06 mete esa idea en el Trellis moderno sin tocar el camino viejo de un observable. El primer correo rojo fue porque una prueba antigua exigía justamente que la nueva función no existiera.**
+**P05 nos dice qué respuesta debería salir. P06 mete esa idea en el Trellis moderno sin tocar el camino viejo de un observable. El primer correo rojo fue porque una prueba antigua exigía justamente que la nueva función no existiera. P06a ya quedó verde; P06b sólo intenta encontrar más esquinas donde podamos haberla cagado.**
