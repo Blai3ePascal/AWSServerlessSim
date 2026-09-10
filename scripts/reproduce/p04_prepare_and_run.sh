@@ -38,6 +38,22 @@ git -C "$UPSTREAM" diff > "$OUT/instrumentation.patch"
   bazel build -c opt //src:tesseract_trellis
 )
 
+# perf is useful evidence, but its presence in PATH does not imply that the
+# kernel allows hardware counters for the current user. Probe a harmless event
+# first. If permission is unavailable, preserve that fact and continue without
+# perf instead of losing the primary benchmark.
+PERF_ARGS=()
+if command -v perf >/dev/null 2>&1; then
+  if perf stat -e task-clock -- true >/dev/null 2>"$OUT/perf-preflight.stderr.txt"; then
+    PERF_ARGS=(--with-perf)
+    printf 'usable=true\n' > "$OUT/perf-preflight.txt"
+  else
+    printf 'usable=false\nreason=perf stat preflight failed; see perf-preflight.stderr.txt\n' > "$OUT/perf-preflight.txt"
+  fi
+else
+  printf 'usable=false\nreason=perf not found in PATH\n' > "$OUT/perf-preflight.txt"
+fi
+
 python3 scripts/reproduce/p04_controlled_cpu_benchmark.py \
   --mode benchmark \
   --machine-label "$LABEL" \
@@ -46,7 +62,7 @@ python3 scripts/reproduce/p04_controlled_cpu_benchmark.py \
   --event-block-repeats 250 \
   --warmups 2 \
   --repetitions 10 \
-  --with-perf
+  "${PERF_ARGS[@]}"
 
 find "$OUT" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$OUT/SHA256SUMS"
 echo "P04 controlled benchmark completed: $OUT"
