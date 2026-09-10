@@ -1,0 +1,180 @@
+name: Tesseract P06 modern multi-observable correctness
+
+on:
+  push:
+    branches:
+      - research/tesseract-p06-modern-multiobservable
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p06-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  modern-multiobservable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout untouched modern baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-modern-baseline
+          persist-credentials: false
+
+      - name: Checkout modern tree for experimental patch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-modern-multiobs
+          persist-credentials: false
+
+      - name: Checkout public P05 reference ancestor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 56996facf54c25e6c08fed19d8902f40e1971f55
+          path: external/tesseract-p05-reference
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture provenance
+        run: |
+          rm -rf research/results/P06
+          mkdir -p research/results/P06
+          {
+            echo 'benchmark_valid=false'
+            echo 'timing_metrics_interpretable=false'
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "modern_baseline=$(git -C external/tesseract-modern-baseline rev-parse HEAD)"
+            echo "modern_patch_base=$(git -C external/tesseract-modern-multiobs rev-parse HEAD)"
+            echo "p05_reference=$(git -C external/tesseract-p05-reference rev-parse HEAD)"
+            echo "bazel=$(bazel --version 2>&1)"
+          } > research/results/P06/environment.txt
+
+      - name: Verify all pinned SHAs
+        run: |
+          test "$(git -C external/tesseract-modern-baseline rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+          test "$(git -C external/tesseract-modern-multiobs rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+          test "$(git -C external/tesseract-p05-reference rev-parse HEAD)" = "56996facf54c25e6c08fed19d8902f40e1971f55"
+
+      - name: Untouched modern upstream regression
+        id: baseline
+        continue-on-error: true
+        working-directory: external/tesseract-modern-baseline
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P06/modern-baseline-tests.log
+
+      - name: Rebuild P05 correctness oracle
+        id: p05patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p05_public_multiobs_reference.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/P06/p05-reference-report.json
+          python3 scripts/instrument/apply_p05b_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/P06/p05b-edge-report.json
+          git -C external/tesseract-p05-reference diff --check
+
+      - name: Run P05 exact/reference tests
+        id: p05tests
+        if: steps.p05patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-p05-reference
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_multiobs_ref_tests --test_output=all 2>&1 \
+            | tee ../../research/results/P06/p05-reference-tests.log
+
+      - name: Apply P06 modern multi-observable patch
+        id: patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p06_modern_multiobs.py \
+            --upstream-dir external/tesseract-modern-multiobs \
+            --report research/results/P06/p06-patch-report.json
+          git -C external/tesseract-modern-multiobs diff --check
+          git -C external/tesseract-modern-multiobs diff \
+            > research/results/P06/modern-multiobs.patch
+          test -s research/results/P06/modern-multiobs.patch
+
+      - name: Build patched modern Trellis
+        id: build
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-modern-multiobs
+        run: |
+          set -o pipefail
+          bazel build //src:tesseract_trellis //src:tesseract_trellis_modern_multiobs_tests 2>&1 \
+            | tee ../../research/results/P06/modern-multiobs-build.log
+
+      - name: Run patched modern upstream regression
+        id: regression
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-modern-multiobs
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P06/modern-patched-upstream-tests.log
+
+      - name: Run P06 exact multi-observable tests
+        id: multiobs
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-modern-multiobs
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_modern_multiobs_tests --test_output=all 2>&1 \
+            | tee ../../research/results/P06/modern-multiobs-tests.log
+
+      - name: Package P06 evidence
+        if: always()
+        run: |
+          cp research/phases/P06_MODERN_MULTIOBSERVABLE_PORT_DESIGN.md research/results/P06/
+          cp research/P05_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/P06/
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nmodern_upstream=%s\np05_reference=%s\nbenchmark_valid=false\ntiming_metrics_interpretable=false\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
+            "56996facf54c25e6c08fed19d8902f40e1971f55" \
+            > research/results/P06/github-run.txt
+          find research/results/P06 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/P06/SHA256SUMS
+
+      - name: Upload P06 evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p06-modern-multiobservable-${{ github.run_id }}
+          path: research/results/P06/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P06 correctness contract
+        if: always()
+        run: |
+          test "${{ steps.baseline.outcome }}" = "success" || { echo "Untouched modern baseline failed."; exit 1; }
+          test "${{ steps.p05patch.outcome }}" = "success" || { echo "Could not rebuild P05 reference."; exit 1; }
+          test "${{ steps.p05tests.outcome }}" = "success" || { echo "P05 correctness oracle failed."; exit 1; }
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch failed."; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "P06 modern multiobs build failed."; exit 1; }
+          test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern upstream regression failed."; exit 1; }
+          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P06 exact multiobservable tests failed."; exit 1; }
+          echo "P06 modern multi-observable correctness contract passed."
