@@ -84,9 +84,22 @@ jobs:
           git -C external/tesseract-multiobs-ancestor diff > research/results/P05/public-reference.patch
           test -s research/results/P05/public-reference.patch
 
+      - name: Apply P05b adversarial correctness tests
+        id: edge
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p05b_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-multiobs-ancestor \
+            --report research/results/P05/p05b-edge-report.json
+          git -C external/tesseract-multiobs-ancestor diff --check
+          git -C external/tesseract-multiobs-ancestor diff \
+            > research/results/P05/public-reference-with-edge-tests.patch
+          test -s research/results/P05/public-reference-with-edge-tests.patch
+
       - name: Build public-lineage Trellis reference
         id: build
-        if: steps.patch.outcome == 'success'
+        if: steps.edge.outcome == 'success'
         continue-on-error: true
         working-directory: external/tesseract-multiobs-ancestor
         run: |
@@ -94,7 +107,7 @@ jobs:
           bazel build //src:tesseract_trellis //src:tesseract_trellis_multiobs_ref_tests 2>&1 \
             | tee ../../research/results/P05/ancestor-build.log
 
-      - name: Run P05 multi-observable correctness tests
+      - name: Run P05 multi-observable correctness and oracle tests
         id: multiobs
         if: steps.build.outcome == 'success'
         continue-on-error: true
@@ -118,6 +131,8 @@ jobs:
         if: always()
         run: |
           cp research/phases/P05_MULTIOBSERVABLE_REFERENCE.md research/results/P05/
+          cp research/phases/P05B_EDGE_VALIDATION.md research/results/P05/
+          cp research/P05_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/P05/
           printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nmodern_upstream=%s\npublic_ancestor=%s\nbenchmark_valid=false\ntiming_metrics_interpretable=false\n' \
             "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
             "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
@@ -142,7 +157,8 @@ jobs:
         run: |
           test "${{ steps.modern.outcome }}" = "success" || { echo "Frozen modern Trellis regression failed."; exit 1; }
           test "${{ steps.patch.outcome }}" = "success" || { echo "P05 public-reference patch failed."; exit 1; }
+          test "${{ steps.edge.outcome }}" = "success" || { echo "P05b adversarial test patch failed."; exit 1; }
           test "${{ steps.build.outcome }}" = "success" || { echo "P05 public-reference build failed."; exit 1; }
-          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P05 multi-observable correctness tests failed."; exit 1; }
+          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P05 multi-observable correctness/oracle tests failed."; exit 1; }
           test "${{ steps.ancestor_regression.outcome }}" = "success" || { echo "P05 ancestor regression failed."; exit 1; }
           echo "P05 public-lineage multi-observable correctness contract passed."
