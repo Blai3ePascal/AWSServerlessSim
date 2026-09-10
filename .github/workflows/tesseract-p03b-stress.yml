@@ -1,0 +1,88 @@
+name: Tesseract P03b beam-pressure stress
+
+on:
+  push:
+    branches:
+      - research/tesseract-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p03b-stress-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  beam-pressure-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Apply validated P02 instrumentation
+        id: patch
+        continue-on-error: true
+        run: |
+          rm -rf research/results/P03b && mkdir -p research/results/P03b
+          python3 scripts/instrument/apply_p02_layer_stats.py --upstream-dir external/tesseract-decoder --report research/results/P03b/p02a-patch-report.json
+          python3 scripts/instrument/apply_p02b_layer_trace_cli.py --upstream-dir external/tesseract-decoder --report research/results/P03b/p02b-patch-report.json
+          git -C external/tesseract-decoder diff --check
+      - name: Focused Trellis regression tests
+        id: focused
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 | tee ../../research/results/P03b/trellis-tests.log
+      - name: Build instrumented Trellis CLI
+        id: build
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-decoder
+        run: |
+          set -o pipefail
+          bazel build //src:tesseract_trellis 2>&1 | tee ../../research/results/P03b/build.log
+      - name: Run beam-pressure matrix twice
+        id: stress
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/reproduce/p03b_stress_characterization.py --upstream-dir external/tesseract-decoder --output-dir research/results/P03b/characterization
+      - name: Add provenance and checksums
+        if: always()
+        run: |
+          mkdir -p research/results/P03b
+          cp research/phases/P03B_STRESS_CHARACTERIZATION.md research/results/P03b/P03B_STRESS_CHARACTERIZATION.md
+          cp research/findings/P03_INITIAL_STRUCTURAL_FINDING.md research/results/P03b/P03_INITIAL_STRUCTURAL_FINDING.md
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\nbenchmark_valid=false\n' "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" "024db1d3b5b038f565c476dd1b51885271f7b0bf" > research/results/P03b/github-run.txt
+          find research/results/P03b -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > research/results/P03b/SHA256SUMS
+      - name: Upload P03b evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p03b-stress-evidence-${{ github.run_id }}
+          path: research/results/P03b/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce P03b contract
+        if: always()
+        run: |
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P03b patch failed"; exit 1; }
+          test "${{ steps.focused.outcome }}" = "success" || { echo "P03b focused tests failed"; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "P03b build failed"; exit 1; }
+          test "${{ steps.stress.outcome }}" = "success" || { echo "P03b stress contract failed or no beam pressure was reached"; exit 1; }
+          echo "P03b beam-pressure stress contract passed."
