@@ -1,0 +1,232 @@
+name: Tesseract P06d independent exact-oracle correctness
+
+on:
+  push:
+    branches:
+      - research/tesseract-p06d-exact-oracle
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p06d-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-oracle-correctness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout public P05 reference ancestor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 56996facf54c25e6c08fed19d8902f40e1971f55
+          path: external/tesseract-p05-reference
+          persist-credentials: false
+
+      - name: Checkout modern tree for P06
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-p06-modern
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture provenance
+        run: |
+          rm -rf research/results/P06d research/generated/P06d
+          mkdir -p research/results/P06d research/generated/P06d
+          {
+            echo 'phase=P06d'
+            echo 'benchmark_valid=false'
+            echo 'timing_metrics_interpretable=false'
+            echo 'claims_private_equivalence=false'
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "harness_sha=$GITHUB_SHA"
+            echo "p05_reference=$(git -C external/tesseract-p05-reference rev-parse HEAD)"
+            echo "p06_modern_base=$(git -C external/tesseract-p06-modern rev-parse HEAD)"
+            echo "python=$(python3 --version 2>&1)"
+            echo "bazel=$(bazel --version 2>&1)"
+          } > research/results/P06d/environment.txt
+
+      - name: Verify pinned upstream SHAs
+        run: |
+          test "$(git -C external/tesseract-p05-reference rev-parse HEAD)" = "56996facf54c25e6c08fed19d8902f40e1971f55"
+          test "$(git -C external/tesseract-p06-modern rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+
+      - name: Generate deterministic 640-case corpus
+        id: corpus
+        continue-on-error: true
+        run: |
+          python3 scripts/generate_p06c_corpus.py \
+            --output-dir research/generated/P06d \
+            --manifest research/generated/P06d/manifest.tsv \
+            --metadata research/generated/P06d/corpus.json \
+            2>&1 | tee research/results/P06d/corpus-generation.log
+          test "$(grep -vc '^#' research/generated/P06d/manifest.tsv)" = "640"
+
+      - name: Compute independent exact oracle
+        id: oracle
+        if: steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/compute_p06d_exact_oracle.py \
+            --metadata research/generated/P06d/corpus.json \
+            --output research/results/P06d/exact-oracle.tsv \
+            --summary research/results/P06d/exact-oracle-summary.json \
+            2>&1 | tee research/results/P06d/exact-oracle.log
+          test "$(tail -n +2 research/results/P06d/exact-oracle.tsv | wc -l)" = "640"
+
+      - name: Rebuild P05 reference plus tests and dump driver
+        id: p05patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p05_public_multiobs_reference.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/P06d/p05-reference-report.json
+          python3 scripts/instrument/apply_p05b_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/P06d/p05b-edge-report.json
+          python3 scripts/instrument/apply_p06c_diff_driver.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --kind ancestor \
+            --report research/results/P06d/p05-diff-driver-report.json
+          git -C external/tesseract-p05-reference diff --check
+          git -C external/tesseract-p05-reference diff > research/results/P06d/p05-reference.patch
+
+      - name: Rebuild P06 modern plus P06b tests and dump driver
+        id: p06patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p06_modern_multiobs.py \
+            --upstream-dir external/tesseract-p06-modern \
+            --report research/results/P06d/p06-patch-report.json
+          python3 scripts/instrument/apply_p06_expected_upstream_contract.py \
+            --upstream-dir external/tesseract-p06-modern \
+            --report research/results/P06d/p06-upstream-contract-report.json
+          python3 scripts/instrument/apply_p06b_modern_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-p06-modern \
+            --report research/results/P06d/p06b-edge-report.json
+          python3 scripts/instrument/apply_p06c_diff_driver.py \
+            --upstream-dir external/tesseract-p06-modern \
+            --kind modern \
+            --report research/results/P06d/p06-diff-driver-report.json
+          git -C external/tesseract-p06-modern diff --check
+          git -C external/tesseract-p06-modern diff > research/results/P06d/p06-modern.patch
+
+      - name: Run P05 reference correctness suite
+        id: p05tests
+        if: steps.p05patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-p05-reference
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_multiobs_ref_tests --test_output=all 2>&1 \
+            | tee ../../research/results/P06d/p05-reference-tests.log
+
+      - name: Run P06 compatible upstream and multiobservable suites
+        id: p06tests
+        if: steps.p06patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-p06-modern
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests //src:tesseract_trellis_modern_multiobs_tests \
+            --test_output=all 2>&1 | tee ../../research/results/P06d/p06-tests.log
+
+      - name: Build both decoder dump drivers
+        id: build
+        if: steps.p05patch.outcome == 'success' && steps.p06patch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (cd external/tesseract-p05-reference && bazel build //src:tesseract_trellis_diff_dump) \
+            2>&1 | tee research/results/P06d/p05-driver-build.log
+          (cd external/tesseract-p06-modern && bazel build //src:tesseract_trellis_diff_dump) \
+            2>&1 | tee research/results/P06d/p06-driver-build.log
+
+      - name: Dump P05 answers for all 640 cases
+        id: p05dump
+        if: steps.build.outcome == 'success' && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          external/tesseract-p05-reference/bazel-bin/src/tesseract_trellis_diff_dump \
+            research/generated/P06d/manifest.tsv research/results/P06d/p05-results.tsv \
+            2>&1 | tee research/results/P06d/p05-dump.log
+          test "$(tail -n +2 research/results/P06d/p05-results.tsv | wc -l)" = "640"
+
+      - name: Dump P06 answers for all 640 cases
+        id: p06dump
+        if: steps.build.outcome == 'success' && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          external/tesseract-p06-modern/bazel-bin/src/tesseract_trellis_diff_dump \
+            research/generated/P06d/manifest.tsv research/results/P06d/p06-results.tsv \
+            2>&1 | tee research/results/P06d/p06-dump.log
+          test "$(tail -n +2 research/results/P06d/p06-results.tsv | wc -l)" = "640"
+
+      - name: Compare P05 and P06 against exact oracle
+        id: compare
+        if: steps.oracle.outcome == 'success' && steps.p05dump.outcome == 'success' && steps.p06dump.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/compare_p06d_exact_oracle.py \
+            --oracle research/results/P06d/exact-oracle.tsv \
+            --p05 research/results/P06d/p05-results.tsv \
+            --p06 research/results/P06d/p06-results.tsv \
+            --metadata research/generated/P06d/corpus.json \
+            --json-report research/results/P06d/exact-validation-summary.json \
+            --markdown-report research/results/P06d/P06D_RESULTADO.md \
+            --mismatches-tsv research/results/P06d/mismatches.tsv \
+            2>&1 | tee research/results/P06d/compare.log
+
+      - name: Package P06d evidence
+        if: always()
+        run: |
+          cp research/P06D_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/P06d/
+          cp research/phases/P06D_EXACT_ORACLE_VALIDATION.md research/results/P06d/
+          cp research/generated/P06d/manifest.tsv research/results/P06d/ 2>/dev/null || true
+          cp research/generated/P06d/corpus.json research/results/P06d/ 2>/dev/null || true
+          mkdir -p research/results/P06d/dems
+          cp research/generated/P06d/dems/*.dem research/results/P06d/dems/ 2>/dev/null || true
+          printf 'run_id=%s\nrun_attempt=%s\nharness_commit=%s\nharness_ref=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$GITHUB_REF" \
+            > research/results/P06d/github-run.txt
+          find research/results/P06d -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/P06d/SHA256SUMS
+
+      - name: Upload P06d evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p06d-exact-oracle-${{ github.run_id }}
+          path: research/results/P06d/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P06d exact correctness contract
+        if: always()
+        run: |
+          test "${{ steps.corpus.outcome }}" = "success" || { echo "P06d corpus generation failed."; exit 1; }
+          test "${{ steps.oracle.outcome }}" = "success" || { echo "P06d independent exact oracle failed."; exit 1; }
+          test "${{ steps.p05patch.outcome }}" = "success" || { echo "Could not rebuild P05 reference/driver."; exit 1; }
+          test "${{ steps.p06patch.outcome }}" = "success" || { echo "Could not rebuild P06/driver."; exit 1; }
+          test "${{ steps.p05tests.outcome }}" = "success" || { echo "P05 reference suite failed."; exit 1; }
+          test "${{ steps.p06tests.outcome }}" = "success" || { echo "P06 regression/multiobservable suite failed."; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "Decoder dump-driver build failed."; exit 1; }
+          test "${{ steps.p05dump.outcome }}" = "success" || { echo "P05 result dump failed."; exit 1; }
+          test "${{ steps.p06dump.outcome }}" = "success" || { echo "P06 result dump failed."; exit 1; }
+          test "${{ steps.compare.outcome }}" = "success" || { echo "EXACT-ORACLE MISMATCH: inspect the P06d artifact."; exit 1; }
+          echo "P06d independent exact-oracle correctness contract passed."
