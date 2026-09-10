@@ -124,7 +124,7 @@ def main() -> int:
         raise RuntimeError("Expected libtesseract_trellis target not found")
 
     source_path.write_text(SOURCE, encoding="utf-8")
-    build_path.write_text(build_text.rstrip() + BUILD_SNIPPET + "\n", encoding="utf-8")
+    build_path.write_text(build_text.rstrip() + BUILD_SNIPPET.rstrip() + "\n", encoding="utf-8")
 
     report = {
         "phase": "P07a",
