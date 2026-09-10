@@ -81,7 +81,7 @@ $Lines = Get-ChildItem -Path $Root -File -Recurse |
     Sort-Object FullName |
     ForEach-Object {
         $Hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
-        $Relative = $_.FullName.Substring($Root.Length).TrimStart('\\','/').Replace('\\','/')
+        $Relative = $_.FullName.Substring($Root.Length).TrimStart([char[]]'\/').Replace('\','/')
         "$Hash  $Relative"
     }
 $Lines | Set-Content -Encoding ascii $ChecksumPath
