@@ -110,6 +110,9 @@ jobs:
           python3 scripts/instrument/apply_p06_modern_multiobs.py \
             --upstream-dir external/tesseract-modern-multiobs \
             --report research/results/P06/p06-patch-report.json
+          python3 scripts/instrument/apply_p06_expected_upstream_contract.py \
+            --upstream-dir external/tesseract-modern-multiobs \
+            --report research/results/P06/p06-upstream-contract-report.json
           git -C external/tesseract-modern-multiobs diff --check
           git -C external/tesseract-modern-multiobs diff \
             > research/results/P06/modern-multiobs.patch
@@ -125,7 +128,7 @@ jobs:
           bazel build //src:tesseract_trellis //src:tesseract_trellis_modern_multiobs_tests 2>&1 \
             | tee ../../research/results/P06/modern-multiobs-build.log
 
-      - name: Run patched modern upstream regression
+      - name: Run patched modern regression with deliberate contract update
         id: regression
         if: steps.build.outcome == 'success'
         continue-on-error: true
@@ -175,6 +178,6 @@ jobs:
           test "${{ steps.p05tests.outcome }}" = "success" || { echo "P05 correctness oracle failed."; exit 1; }
           test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch failed."; exit 1; }
           test "${{ steps.build.outcome }}" = "success" || { echo "P06 modern multiobs build failed."; exit 1; }
-          test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern upstream regression failed."; exit 1; }
+          test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern regression failed beyond the deliberate observable-contract update."; exit 1; }
           test "${{ steps.multiobs.outcome }}" = "success" || { echo "P06 exact multiobservable tests failed."; exit 1; }
           echo "P06 modern multi-observable correctness contract passed."
