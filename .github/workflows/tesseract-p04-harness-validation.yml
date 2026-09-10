@@ -1,0 +1,92 @@
+name: Tesseract P04 benchmark harness validation
+
+on:
+  push:
+    branches:
+      - research/tesseract-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p04-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-harness-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout pinned Tesseract upstream
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-decoder
+          persist-credentials: false
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Apply validated instrumentation
+        run: |
+          rm -rf research/results/P04-validation && mkdir -p research/results/P04-validation
+          python3 scripts/instrument/apply_p02_layer_stats.py --upstream-dir external/tesseract-decoder --report research/results/P04-validation/p02a.json
+          python3 scripts/instrument/apply_p02b_layer_trace_cli.py --upstream-dir external/tesseract-decoder --report research/results/P04-validation/p02b.json
+          git -C external/tesseract-decoder diff --check
+      - name: Test and optimized build
+        working-directory: external/tesseract-decoder
+        run: |
+          bazel test //src:tesseract_trellis_tests --test_output=errors
+          bazel build -c opt //src:tesseract_trellis
+      - name: Validate benchmark harness without benchmarking CI
+        run: |
+          python3 scripts/reproduce/p04_controlled_cpu_benchmark.py \
+            --mode validate \
+            --machine-label github-actions-validation \
+            --upstream-dir external/tesseract-decoder \
+            --output-dir research/results/P04-validation/harness \
+            --event-block-repeats 1 \
+            --repetitions 1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('research/results/P04-validation/harness')
+          m=json.loads((root/'manifest.json').read_text())
+          e=json.loads((root/'environment.json').read_text())
+          assert m['mode']=='validate'
+          assert m['benchmark_valid'] is False
+          assert e['benchmark_valid'] is False
+          assert e['recognized_ci'], 'CI environment should be detected'
+          assert (root/'repetitions.csv').stat().st_size > 0
+          assert (root/'summary.csv').stat().st_size > 0
+          PY
+      - name: Prove benchmark mode refuses CI
+        run: |
+          if python3 scripts/reproduce/p04_controlled_cpu_benchmark.py \
+               --mode benchmark --machine-label forbidden-ci \
+               --upstream-dir external/tesseract-decoder \
+               --output-dir research/results/P04-validation/must-not-exist \
+               --event-block-repeats 1 --repetitions 1; then
+            echo 'ERROR: benchmark mode unexpectedly ran on CI' >&2
+            exit 1
+          fi
+      - name: Package validation evidence
+        if: always()
+        run: |
+          cp research/phases/P04_CONTROLLED_HARDWARE.md research/results/P04-validation/P04_CONTROLLED_HARDWARE.md
+          cp research/findings/P03B_BEAM_PRESSURE_FINDING.md research/results/P04-validation/P03B_BEAM_PRESSURE_FINDING.md
+          printf 'harness_commit=%s\nrun_id=%s\nbenchmark_valid=false\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > research/results/P04-validation/github-run.txt
+          find research/results/P04-validation -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > research/results/P04-validation/SHA256SUMS
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p04-harness-validation-${{ github.run_id }}
+          path: research/results/P04-validation/
+          if-no-files-found: error
+          retention-days: 30
