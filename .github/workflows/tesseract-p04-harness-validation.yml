@@ -32,6 +32,20 @@ jobs:
         with:
           bazelisk-cache: true
           repository-cache: true
+      - name: Validate Windows wrapper syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/reproduce/p04_prepare_and_run.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - name: Apply validated instrumentation
         run: |
           rm -rf research/results/P04-validation && mkdir -p research/results/P04-validation
