@@ -1,0 +1,148 @@
+name: Tesseract P05 multi-observable public reference
+
+on:
+  push:
+    branches:
+      - research/tesseract-p05-multiobservable-ref
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p05-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  multiobservable-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout frozen modern upstream baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-modern
+          persist-credentials: false
+
+      - name: Checkout public Trellis ancestor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 56996facf54c25e6c08fed19d8902f40e1971f55
+          path: external/tesseract-multiobs-ancestor
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture provenance
+        run: |
+          rm -rf research/results/P05
+          mkdir -p research/results/P05
+          {
+            echo 'benchmark_valid=false'
+            echo 'timing_metrics_interpretable=false'
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "uname=$(uname -a)"
+            echo "python=$(python3 --version 2>&1)"
+            echo "bazel=$(bazel --version 2>&1)"
+            echo "modern_sha=$(git -C external/tesseract-modern rev-parse HEAD)"
+            echo "ancestor_sha=$(git -C external/tesseract-multiobs-ancestor rev-parse HEAD)"
+          } > research/results/P05/environment.txt
+
+      - name: Verify pinned SHAs
+        run: |
+          test "$(git -C external/tesseract-modern rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+          test "$(git -C external/tesseract-multiobs-ancestor rev-parse HEAD)" = "56996facf54c25e6c08fed19d8902f40e1971f55"
+
+      - name: Modern upstream Trellis regression baseline
+        id: modern
+        continue-on-error: true
+        working-directory: external/tesseract-modern
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P05/modern-trellis-tests.log
+
+      - name: Apply P05 public-lineage reference patch
+        id: patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p05_public_multiobs_reference.py \
+            --upstream-dir external/tesseract-multiobs-ancestor \
+            --report research/results/P05/patch-report.json
+          git -C external/tesseract-multiobs-ancestor diff --check
+          git -C external/tesseract-multiobs-ancestor diff > research/results/P05/public-reference.patch
+          test -s research/results/P05/public-reference.patch
+
+      - name: Build public-lineage Trellis reference
+        id: build
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-multiobs-ancestor
+        run: |
+          set -o pipefail
+          bazel build //src:tesseract_trellis //src:tesseract_trellis_multiobs_ref_tests 2>&1 \
+            | tee ../../research/results/P05/ancestor-build.log
+
+      - name: Run P05 multi-observable correctness tests
+        id: multiobs
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-multiobs-ancestor
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_multiobs_ref_tests --test_output=all 2>&1 \
+            | tee ../../research/results/P05/multiobs-tests.log
+
+      - name: Run ancestor upstream regression tests
+        id: ancestor_regression
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-multiobs-ancestor
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_tests //src:common_tests --test_output=errors 2>&1 \
+            | tee ../../research/results/P05/ancestor-regression-tests.log
+
+      - name: Package P05 evidence
+        if: always()
+        run: |
+          cp research/phases/P05_MULTIOBSERVABLE_REFERENCE.md research/results/P05/
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nmodern_upstream=%s\npublic_ancestor=%s\nbenchmark_valid=false\ntiming_metrics_interpretable=false\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" \
+            "024db1d3b5b038f565c476dd1b51885271f7b0bf" \
+            "56996facf54c25e6c08fed19d8902f40e1971f55" \
+            > research/results/P05/github-run.txt
+          git -C external/tesseract-multiobs-ancestor status --short \
+            > research/results/P05/ancestor-status.txt || true
+          find research/results/P05 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/P05/SHA256SUMS
+
+      - name: Upload P05 evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p05-multiobservable-evidence-${{ github.run_id }}
+          path: research/results/P05/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce P05 correctness contract
+        if: always()
+        run: |
+          test "${{ steps.modern.outcome }}" = "success" || { echo "Frozen modern Trellis regression failed."; exit 1; }
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P05 public-reference patch failed."; exit 1; }
+          test "${{ steps.build.outcome }}" = "success" || { echo "P05 public-reference build failed."; exit 1; }
+          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P05 multi-observable correctness tests failed."; exit 1; }
+          test "${{ steps.ancestor_regression.outcome }}" = "success" || { echo "P05 ancestor regression failed."; exit 1; }
+          echo "P05 public-lineage multi-observable correctness contract passed."
