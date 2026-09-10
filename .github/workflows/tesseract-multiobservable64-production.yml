@@ -1,0 +1,307 @@
+name: Tesseract multiobservable64 production validation
+
+on:
+  push:
+    branches:
+      - research/tesseract-multiobservable64-production
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-multiobservable64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-production-extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout untouched modern upstream baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-modern-clean
+          persist-credentials: false
+
+      - name: Checkout public historical multiobservable reference
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 56996facf54c25e6c08fed19d8902f40e1971f55
+          path: external/tesseract-p05-reference
+          persist-credentials: false
+
+      - name: Checkout modern upstream for production extension
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: 024db1d3b5b038f565c476dd1b51885271f7b0bf
+          path: external/tesseract-multiobs64
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Capture provenance
+        run: |
+          rm -rf research/results/MULTIOBS64 research/generated/MULTIOBS64
+          mkdir -p research/results/MULTIOBS64 research/generated/MULTIOBS64
+          {
+            echo 'phase=P07-production'
+            echo 'target_capability=independent Trellis support for 0..64 observables'
+            echo 'multiobservable_semantics=joint-MAP complete logical mask'
+            echo 'benchmark_valid=false'
+            echo 'timing_metrics_interpretable=false'
+            echo 'claims_private_equivalence=false'
+            echo 'sinter_used=false'
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "harness_sha=$GITHUB_SHA"
+            echo "modern_clean=$(git -C external/tesseract-modern-clean rev-parse HEAD)"
+            echo "historical_reference=$(git -C external/tesseract-p05-reference rev-parse HEAD)"
+            echo "modern_extension_base=$(git -C external/tesseract-multiobs64 rev-parse HEAD)"
+            echo "python=$(python3 --version 2>&1)"
+            echo "bazel=$(bazel --version 2>&1)"
+            uname -a
+          } > research/results/MULTIOBS64/environment.txt
+
+      - name: Verify pinned upstream SHAs
+        run: |
+          test "$(git -C external/tesseract-modern-clean rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+          test "$(git -C external/tesseract-multiobs64 rev-parse HEAD)" = "024db1d3b5b038f565c476dd1b51885271f7b0bf"
+          test "$(git -C external/tesseract-p05-reference rev-parse HEAD)" = "56996facf54c25e6c08fed19d8902f40e1971f55"
+
+      - name: Reproduce untouched modern upstream tests
+        id: baseline
+        continue-on-error: true
+        working-directory: external/tesseract-modern-clean
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_tests --test_output=all 2>&1 \
+            | tee ../../research/results/MULTIOBS64/modern-clean-baseline.log
+
+      - name: Generate deterministic 640-case exactness corpus
+        id: corpus
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/generate_p06c_corpus.py \
+            --output-dir research/generated/MULTIOBS64 \
+            --manifest research/generated/MULTIOBS64/manifest.tsv \
+            --metadata research/generated/MULTIOBS64/corpus.json \
+            2>&1 | tee research/results/MULTIOBS64/corpus-generation.log
+          test "$(grep -vc '^#' research/generated/MULTIOBS64/manifest.tsv)" = "640"
+          grep -q '0.001' research/generated/MULTIOBS64/corpus.json
+          grep -q '"num_observables": 8' research/generated/MULTIOBS64/corpus.json
+          grep -q '"num_observables": 12' research/generated/MULTIOBS64/corpus.json
+          grep -q '"num_observables": 64' research/generated/MULTIOBS64/corpus.json
+
+      - name: Compute independent exact probabilistic oracle
+        id: oracle
+        if: steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/compute_p06d_exact_oracle.py \
+            --metadata research/generated/MULTIOBS64/corpus.json \
+            --output research/results/MULTIOBS64/exact-oracle.tsv \
+            --summary research/results/MULTIOBS64/exact-oracle-summary.json \
+            2>&1 | tee research/results/MULTIOBS64/exact-oracle.log
+          test "$(tail -n +2 research/results/MULTIOBS64/exact-oracle.tsv | wc -l)" = "640"
+
+      - name: Rebuild public historical reference and dump driver
+        id: reference_patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p05_public_multiobs_reference.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/MULTIOBS64/p05-reference-report.json
+          python3 scripts/instrument/apply_p05b_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --report research/results/MULTIOBS64/p05b-edge-report.json
+          python3 scripts/instrument/apply_p06c_diff_driver.py \
+            --upstream-dir external/tesseract-p05-reference \
+            --kind ancestor \
+            --report research/results/MULTIOBS64/p05-diff-driver-report.json
+          git -C external/tesseract-p05-reference diff --check
+          git -C external/tesseract-p05-reference diff --binary \
+            > research/results/MULTIOBS64/historical-reference.patch
+
+      - name: Build production 0..64-observable extension
+        id: production_patch
+        continue-on-error: true
+        run: |
+          python3 scripts/instrument/apply_p06_modern_multiobs.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --report research/results/MULTIOBS64/p06-patch-report.json
+          python3 scripts/instrument/apply_p06_expected_upstream_contract.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --report research/results/MULTIOBS64/p06-upstream-contract-report.json
+          python3 scripts/instrument/apply_p06b_modern_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --report research/results/MULTIOBS64/p06b-edge-report.json
+          python3 scripts/instrument/apply_p07_complete_multiobs64_modes.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --report research/results/MULTIOBS64/p07-complete-modes-report.json
+          python3 scripts/instrument/apply_p07b_mode_equivalence_tests.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --report research/results/MULTIOBS64/p07b-mode-equivalence-report.json
+          python3 scripts/instrument/apply_p06c_diff_driver.py \
+            --upstream-dir external/tesseract-multiobs64 \
+            --kind modern \
+            --report research/results/MULTIOBS64/production-diff-driver-report.json
+          git -C external/tesseract-multiobs64 diff --check
+          git -C external/tesseract-multiobs64 diff --binary \
+            > research/results/MULTIOBS64/tesseract-multiobservable64.patch
+
+      - name: Run historical reference correctness suite
+        id: reference_tests
+        if: steps.reference_patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-p05-reference
+        run: |
+          set -o pipefail
+          bazel test //src:tesseract_trellis_multiobs_ref_tests --test_output=all 2>&1 \
+            | tee ../../research/results/MULTIOBS64/historical-reference-tests.log
+
+      - name: Run production regressions and multiobservable suites
+        id: production_tests
+        if: steps.production_patch.outcome == 'success'
+        continue-on-error: true
+        working-directory: external/tesseract-multiobs64
+        run: |
+          set -o pipefail
+          bazel test \
+            //src:tesseract_trellis_tests \
+            //src:tesseract_trellis_modern_multiobs_tests \
+            //src:tesseract_trellis_multiobs64_modes_tests \
+            --test_output=all 2>&1 | tee ../../research/results/MULTIOBS64/production-tests.log
+
+      - name: Build reference and production result dumpers
+        id: build_dumpers
+        if: steps.reference_patch.outcome == 'success' && steps.production_patch.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (cd external/tesseract-p05-reference && bazel build //src:tesseract_trellis_diff_dump) \
+            2>&1 | tee research/results/MULTIOBS64/reference-dumper-build.log
+          (cd external/tesseract-multiobs64 && bazel build //src:tesseract_trellis_diff_dump) \
+            2>&1 | tee research/results/MULTIOBS64/production-dumper-build.log
+
+      - name: Dump historical reference answers for all 640 cases
+        id: reference_dump
+        if: steps.build_dumpers.outcome == 'success' && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          external/tesseract-p05-reference/bazel-bin/src/tesseract_trellis_diff_dump \
+            research/generated/MULTIOBS64/manifest.tsv \
+            research/results/MULTIOBS64/reference-results.tsv \
+            2>&1 | tee research/results/MULTIOBS64/reference-dump.log
+          test "$(tail -n +2 research/results/MULTIOBS64/reference-results.tsv | wc -l)" = "640"
+
+      - name: Dump production answers for all 640 cases
+        id: production_dump
+        if: steps.build_dumpers.outcome == 'success' && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: |
+          external/tesseract-multiobs64/bazel-bin/src/tesseract_trellis_diff_dump \
+            research/generated/MULTIOBS64/manifest.tsv \
+            research/results/MULTIOBS64/production-results.tsv \
+            2>&1 | tee research/results/MULTIOBS64/production-dump.log
+          test "$(tail -n +2 research/results/MULTIOBS64/production-results.tsv | wc -l)" = "640"
+
+      - name: Compare production extension against independent exact oracle
+        id: exact_compare
+        if: steps.oracle.outcome == 'success' && steps.reference_dump.outcome == 'success' && steps.production_dump.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/compare_p06d_exact_oracle.py \
+            --oracle research/results/MULTIOBS64/exact-oracle.tsv \
+            --p05 research/results/MULTIOBS64/reference-results.tsv \
+            --p06 research/results/MULTIOBS64/production-results.tsv \
+            --metadata research/generated/MULTIOBS64/corpus.json \
+            --json-report research/results/MULTIOBS64/exact-validation-summary.json \
+            --markdown-report research/results/MULTIOBS64/EXACT_VALIDATION_RESULT.md \
+            --mismatches-tsv research/results/MULTIOBS64/mismatches.tsv \
+            2>&1 | tee research/results/MULTIOBS64/exact-compare.log
+
+      - name: Write human-readable validation summary
+        if: always()
+        run: |
+          {
+            echo '# Tesseract multiobservable64 validation run'
+            echo
+            echo "- run_id: $GITHUB_RUN_ID"
+            echo "- harness_commit: $GITHUB_SHA"
+            echo '- upstream: 024db1d3b5b038f565c476dd1b51885271f7b0bf'
+            echo '- supported observables: 0..64 (L0..L63)'
+            echo '- semantics: joint-MAP complete logical mask'
+            echo '- p=0.001: explicitly present in deterministic exactness corpus'
+            echo '- target observable counts: 8 and 12 explicitly present; corpus also covers 2, 32 and 64'
+            echo '- benchmark_valid: false'
+            echo '- private-source equivalence claimed: false'
+            echo
+            echo '## Step outcomes'
+            echo "- clean baseline: ${{ steps.baseline.outcome }}"
+            echo "- corpus: ${{ steps.corpus.outcome }}"
+            echo "- exact oracle: ${{ steps.oracle.outcome }}"
+            echo "- historical reference patch: ${{ steps.reference_patch.outcome }}"
+            echo "- production patch: ${{ steps.production_patch.outcome }}"
+            echo "- historical reference tests: ${{ steps.reference_tests.outcome }}"
+            echo "- production tests: ${{ steps.production_tests.outcome }}"
+            echo "- dumpers: ${{ steps.build_dumpers.outcome }}"
+            echo "- historical reference dump: ${{ steps.reference_dump.outcome }}"
+            echo "- production dump: ${{ steps.production_dump.outcome }}"
+            echo "- exact comparison: ${{ steps.exact_compare.outcome }}"
+          } > research/results/MULTIOBS64/VALIDATION_SUMMARY.md
+
+      - name: Package complete evidence
+        if: always()
+        run: |
+          cp research/TESSERACT_MULTIOBSERVABLE64_PARA_PROBAR.md research/results/MULTIOBS64/ 2>/dev/null || true
+          cp research/P06_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/MULTIOBS64/ 2>/dev/null || true
+          cp research/P06D_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md research/results/MULTIOBS64/ 2>/dev/null || true
+          cp research/generated/MULTIOBS64/manifest.tsv research/results/MULTIOBS64/ 2>/dev/null || true
+          cp research/generated/MULTIOBS64/corpus.json research/results/MULTIOBS64/ 2>/dev/null || true
+          mkdir -p research/results/MULTIOBS64/dems
+          cp research/generated/MULTIOBS64/dems/*.dem research/results/MULTIOBS64/dems/ 2>/dev/null || true
+          printf 'run_id=%s\nrun_attempt=%s\nharness_commit=%s\nharness_ref=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$GITHUB_REF" \
+            > research/results/MULTIOBS64/github-run.txt
+          find research/results/MULTIOBS64 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/MULTIOBS64/SHA256SUMS
+
+      - name: Upload complete multiobservable64 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-multiobservable64-production-${{ github.run_id }}
+          path: research/results/MULTIOBS64/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce production correctness contract
+        if: always()
+        run: |
+          test "${{ steps.baseline.outcome }}" = "success" || { echo 'Untouched upstream baseline failed.'; exit 1; }
+          test "${{ steps.corpus.outcome }}" = "success" || { echo '640-case corpus generation failed.'; exit 1; }
+          test "${{ steps.oracle.outcome }}" = "success" || { echo 'Independent exact oracle failed.'; exit 1; }
+          test "${{ steps.reference_patch.outcome }}" = "success" || { echo 'Historical reference reconstruction failed.'; exit 1; }
+          test "${{ steps.production_patch.outcome }}" = "success" || { echo 'Production extension could not be built reproducibly.'; exit 1; }
+          test "${{ steps.reference_tests.outcome }}" = "success" || { echo 'Historical reference tests failed.'; exit 1; }
+          test "${{ steps.production_tests.outcome }}" = "success" || { echo 'Production regression/multiobservable tests failed.'; exit 1; }
+          test "${{ steps.build_dumpers.outcome }}" = "success" || { echo 'Result dumper build failed.'; exit 1; }
+          test "${{ steps.reference_dump.outcome }}" = "success" || { echo 'Historical reference result dump failed.'; exit 1; }
+          test "${{ steps.production_dump.outcome }}" = "success" || { echo 'Production result dump failed.'; exit 1; }
+          test "${{ steps.exact_compare.outcome }}" = "success" || { echo 'EXACT-ORACLE MISMATCH: inspect artifact.'; exit 1; }
+          echo 'Tesseract multiobservable64 production correctness contract PASSED.'
