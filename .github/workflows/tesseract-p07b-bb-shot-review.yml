@@ -160,102 +160,15 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          set -euo pipefail
-          BUNDLE=research/results/P07B/review_bundle
-          rm -rf "$BUNDLE"
-          mkdir -p "$BUNDLE/scripts" "$BUNDLE/docs" "$BUNDLE/results" "$BUNDLE/inputs"
-
-          cp research/P07_REVIEW_PACKAGE_README.md "$BUNDLE/README_FIRST.md"
-          cp research/P07_REPRODUCE_REVIEW.sh "$BUNDLE/REPRODUCE.sh"
-          chmod +x "$BUNDLE/REPRODUCE.sh"
-
-          for f in \
-            scripts/instrument/audit_p07_bb_real_inputs.py \
-            scripts/instrument/apply_p06_modern_multiobs.py \
-            scripts/instrument/apply_p06_expected_upstream_contract.py \
-            scripts/instrument/apply_p06b_modern_multiobs_edge_tests.py \
-            scripts/instrument/apply_p07_bb_constructor_probe.py \
-            scripts/instrument/run_p07_bb_constructor_probes.py \
-            scripts/instrument/apply_p07b_bb_shot_runner.py \
-            scripts/instrument/run_p07b_bb_shot_smoke.py; do
-              cp "$f" "$BUNDLE/scripts/"
-          done
-
-          for f in \
-            research/P05_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md \
-            research/P06_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md \
-            research/P07_EXPLICADO_PARA_NO_TENER_QUE_ACORDARME.md \
-            research/phases/P06_MODERN_MULTIOBSERVABLE_PORT_DESIGN.md \
-            research/phases/P07_BB_REAL_DATA_VALIDATION.md; do
-              test ! -f "$f" || cp "$f" "$BUNDLE/docs/"
-          done
-
-          cp research/results/P07B/environment.txt "$BUNDLE/results/"
-          cp research/results/P07B/input-manifest.json "$BUNDLE/results/"
-          cp research/results/P07B/selected-input-paths.txt "$BUNDLE/results/"
-          cp research/results/P07B/full-review.patch "$BUNDLE/results/"
-          cp research/results/P07B/*.json "$BUNDLE/results/" 2>/dev/null || true
-          cp research/results/P07B/*.log "$BUNDLE/results/" 2>/dev/null || true
-          cp -r research/results/P07B/probe-logs "$BUNDLE/results/"
-          cp -r research/results/P07B/shot-logs "$BUNDLE/results/"
-
-          printf '%s\n' '024db1d3b5b038f565c476dd1b51885271f7b0bf' > "$BUNDLE/UPSTREAM_SHA.txt"
-          cat > "$BUNDLE/CHECKPOINTS.txt" <<'EOF'
-P06b successful modern multiobservable checkpoint:
-  run=34457465386
-  tests=12/12
-
-P07a successful real-BB construction checkpoint:
-  run=34473973542
-  harness_commit=aab3dea73759a738e15f970722ca12c435fd3831
-  circuits=8/8
-  artifact=10150753712
-  artifact_sha256=8074b99bf492c156b07f5c7d56c352d5a8e90d906871d6737311b0a4f100ecfe
-
-P07b:
-  See results/p07b-shot-results.json from this bundle/run.
-  benchmark_valid=false
-  timing_metrics_interpretable=false
-  scientific_ler_valid=false
-EOF
-
-          python3 - <<'PY'
-import json, shutil
-from pathlib import Path
-manifest = json.loads(Path('research/results/P07B/input-manifest.json').read_text())
-up = Path('external/tesseract-modern-bb')
-out = Path('research/results/P07B/review_bundle/inputs')
-for item in manifest['inputs']:
-    src = up / item['relative_path']
-    tag = f"bb_{item['n']}_{item['k']}_{item['d']}_{item['basis']}.stim"
-    shutil.copy2(src, out / tag)
-Path(out / 'ORIGINAL_PATHS_AND_HASHES.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
-PY
-
-          rsync -a \
-            --exclude='.git' \
-            --exclude='bazel-*' \
-            external/tesseract-modern-bb/ "$BUNDLE/patched_source/"
-
-          find "$BUNDLE" -type f ! -name SHA256SUMS -print0 \
-            | sort -z | xargs -0 sha256sum > "$BUNDLE/SHA256SUMS"
-
-          python3 - <<'PY'
-from pathlib import Path
-import zipfile
-root = Path('research/results/P07B/review_bundle')
-out = Path('research/results/P07B/tesseract_multiobservable_review_bundle.zip')
-with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-    for p in sorted(root.rglob('*')):
-        if p.is_file():
-            z.write(p, Path('tesseract_multiobservable_review_bundle') / p.relative_to(root))
-print(out, out.stat().st_size)
-PY
-          sha256sum research/results/P07B/tesseract_multiobservable_review_bundle.zip \
-            > research/results/P07B/tesseract_multiobservable_review_bundle.zip.sha256
+          python3 scripts/instrument/build_p07_review_bundle.py \
+            --repo-root . \
+            --upstream-dir external/tesseract-modern-bb \
+            --results-dir research/results/P07B \
+            --bundle-dir research/results/P07B/review_bundle \
+            --zip-out research/results/P07B/tesseract_multiobservable_review_bundle.zip
 
       - name: Upload final reviewer ZIP
-        if: always() && steps.bundle.outcome == 'success'
+        if: ${{ always() && steps.bundle.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tesseract-multiobservable-review-bundle-${{ github.run_id }}
