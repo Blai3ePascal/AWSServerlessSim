@@ -103,7 +103,7 @@ jobs:
           bazel test //src:tesseract_trellis_multiobs_ref_tests --test_output=all 2>&1 \
             | tee ../../research/results/P06/p05-reference-tests.log
 
-      - name: Apply P06 modern multi-observable patch
+      - name: Apply P06 modern multi-observable patch and P06b edge tests
         id: patch
         continue-on-error: true
         run: |
@@ -118,6 +118,10 @@ jobs:
           python3 scripts/instrument/apply_p06_expected_upstream_contract.py \
             --upstream-dir external/tesseract-modern-multiobs \
             --report research/results/P06/p06-upstream-contract-report.json
+          # P06b adds tests only. It does not change the decoder kernel.
+          python3 scripts/instrument/apply_p06b_modern_multiobs_edge_tests.py \
+            --upstream-dir external/tesseract-modern-multiobs \
+            --report research/results/P06/p06b-edge-report.json
           git -C external/tesseract-modern-multiobs diff --check
           git -C external/tesseract-modern-multiobs diff \
             > research/results/P06/modern-multiobs.patch
@@ -143,7 +147,7 @@ jobs:
           bazel test //src:tesseract_trellis_tests --test_output=all 2>&1 \
             | tee ../../research/results/P06/modern-patched-compatible-upstream-tests.log
 
-      - name: Run P06 exact multi-observable tests
+      - name: Run P06a and P06b exact multi-observable tests
         id: multiobs
         if: steps.build.outcome == 'success'
         continue-on-error: true
@@ -182,8 +186,8 @@ jobs:
           test "${{ steps.baseline.outcome }}" = "success" || { echo "Untouched modern baseline failed."; exit 1; }
           test "${{ steps.p05patch.outcome }}" = "success" || { echo "Could not rebuild P05 reference."; exit 1; }
           test "${{ steps.p05tests.outcome }}" = "success" || { echo "P05 correctness oracle failed."; exit 1; }
-          test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch or explicit upstream-contract replacement failed."; exit 1; }
+          test "${{ steps.patch.outcome }}" = "success" || { echo "P06 patch, explicit upstream-contract replacement, or P06b test injection failed."; exit 1; }
           test "${{ steps.build.outcome }}" = "success" || { echo "P06 modern multiobs build failed."; exit 1; }
           test "${{ steps.regression.outcome }}" = "success" || { echo "Patched modern regressions failed beyond the one deliberate >1-observable contract change."; exit 1; }
-          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P06 exact multiobservable tests failed."; exit 1; }
-          echo "P06 modern multi-observable correctness contract passed."
+          test "${{ steps.multiobs.outcome }}" = "success" || { echo "P06a/P06b exact multiobservable tests failed."; exit 1; }
+          echo "P06a/P06b modern multi-observable correctness contract passed."
