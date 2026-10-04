@@ -1,0 +1,69 @@
+name: Trellis beam convergence
+
+on:
+  push:
+    branches:
+      - research/tesseract-trellis-degeneracy-convergence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trellis-beam-convergence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  afinar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Montar y comprobar Trellis 0..64
+        run: bash scripts/build_and_test_tesseract_multiobs64.sh "$GITHUB_WORKSPACE/.conv-work"
+
+      - name: Abrir CLI y compilar
+        run: |
+          python3 scripts/instrument/apply_p08_cli_multiobs64.py             --upstream-dir "$GITHUB_WORKSPACE/.conv-work/tesseract"             --report "$GITHUB_WORKSPACE/.conv-work/cli.json"
+          git -C "$GITHUB_WORKSPACE/.conv-work/tesseract" diff --check
+          cd "$GITHUB_WORKSPACE/.conv-work/tesseract"
+          bazel build //src:tesseract_trellis
+
+      - name: Buscar circuitos
+        run: |
+          python3 scripts/find_p08_bb_circuits.py             --upstream-dir "$GITHUB_WORKSPACE/.conv-work/tesseract"             --output "$GITHUB_WORKSPACE/.conv-work/selected.tsv"             --json "$GITHUB_WORKSPACE/.conv-work/selected.json"
+
+      - name: Afinar los cuatro shots
+        run: |
+          mkdir -p resultados_convergencia
+          python3 scripts/afinar_beam_bb.py             --binary "$GITHUB_WORKSPACE/.conv-work/tesseract/bazel-bin/src/tesseract_trellis"             --upstream-dir "$GITHUB_WORKSPACE/.conv-work/tesseract"             --selection "$GITHUB_WORKSPACE/.conv-work/selected.tsv"             --out-dir resultados_convergencia             --beams 256,512,1024,2048             --timeout 900
+
+      - name: Guardar hashes
+        if: always()
+        run: |
+          cp scripts/afinar_beam_bb.py resultados_convergencia/afinar_beam_bb.py 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/.conv-work/selected.tsv" resultados_convergencia/selected.tsv 2>/dev/null || true
+          printf 'run=%s\ncommit=%s\nupstream=%s\nbenchmark_valido=false\n'             "$GITHUB_RUN_ID" "$GITHUB_SHA" "024db1d3b5b038f565c476dd1b51885271f7b0bf"             > resultados_convergencia/origen.txt
+          (
+            cd resultados_convergencia
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Subir resultados
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trellis-beam-convergence-${{ github.run_id }}
+          path: resultados_convergencia/
+          if-no-files-found: error
+          retention-days: 30
