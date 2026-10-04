@@ -1,0 +1,78 @@
+name: Trellis degeneracy checks
+
+on:
+  push:
+    branches:
+      - research/tesseract-trellis-degeneracy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trellis-degeneracy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Montar y comprobar Trellis 0..64
+        run: bash scripts/build_and_test_tesseract_multiobs64.sh "$GITHUB_WORKSPACE/.deg-work"
+
+      - name: Abrir el CLI multiobservable
+        run: |
+          python3 scripts/instrument/apply_p08_cli_multiobs64.py             --upstream-dir "$GITHUB_WORKSPACE/.deg-work/tesseract"             --report "$GITHUB_WORKSPACE/.deg-work/cli-multiobs.json"
+          git -C "$GITHUB_WORKSPACE/.deg-work/tesseract" diff --check
+          cd "$GITHUB_WORKSPACE/.deg-work/tesseract"
+          bazel build //src:tesseract_trellis
+
+      - name: Buscar los BB reales
+        run: |
+          python3 scripts/find_p08_bb_circuits.py             --upstream-dir "$GITHUB_WORKSPACE/.deg-work/tesseract"             --output "$GITHUB_WORKSPACE/.deg-work/selected-circuits.tsv"             --json "$GITHUB_WORKSPACE/.deg-work/selected-circuits.json"
+          test "$(tail -n +2 "$GITHUB_WORKSPACE/.deg-work/selected-circuits.tsv" | wc -l)" = "8"
+
+      - name: Probar degeneración contra cálculo exacto
+        run: |
+          mkdir -p resultados
+          python3 scripts/probar_degeneracion_trellis.py             --binary "$GITHUB_WORKSPACE/.deg-work/tesseract/bazel-bin/src/tesseract_trellis"             --out-dir resultados/degeneracion             --casos 32             --beams 1,2,4,16,65536
+
+      - name: Probar varios beams en BB reales
+        run: |
+          python3 scripts/probar_beam_bb.py             --binary "$GITHUB_WORKSPACE/.deg-work/tesseract/bazel-bin/src/tesseract_trellis"             --upstream-dir "$GITHUB_WORKSPACE/.deg-work/tesseract"             --selection "$GITHUB_WORKSPACE/.deg-work/selected-circuits.tsv"             --out-dir resultados/bb             --shots 4             --beams 15,64,256,1024             --timeout 600
+
+      - name: Guardar lo necesario
+        if: always()
+        run: |
+          mkdir -p resultados/base
+          cp research/TRELLIS_DEGENERACION_LEEME.md resultados/LEEME.md
+          cp scripts/probar_degeneracion_trellis.py resultados/base/probar_degeneracion_trellis.py
+          cp scripts/probar_beam_bb.py resultados/base/probar_beam_bb.py
+          cp "$GITHUB_WORKSPACE/.deg-work/selected-circuits.tsv" resultados/base/selected-circuits.tsv 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/.deg-work/selected-circuits.json" resultados/base/selected-circuits.json 2>/dev/null || true
+          printf 'run=%s\ncommit=%s\nbranch=%s\nupstream=%s\nbenchmark_valido=false\n'             "$GITHUB_RUN_ID" "$GITHUB_SHA" "$GITHUB_REF" "024db1d3b5b038f565c476dd1b51885271f7b0bf"             > resultados/base/origen.txt
+          (
+            cd resultados
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Subir resultados
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trellis-degeneracy-${{ github.run_id }}
+          path: resultados/
+          if-no-files-found: error
+          retention-days: 30
