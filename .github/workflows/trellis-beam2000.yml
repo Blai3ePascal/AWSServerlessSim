@@ -1,0 +1,71 @@
+name: Trellis beam 2000 check
+
+on:
+  push:
+    branches:
+      - research/tesseract-trellis-degeneracy
+    paths:
+      - '.github/workflows/trellis-beam2000.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Montar Trellis multiobservable
+        run: bash scripts/build_and_test_tesseract_multiobs64.sh "$GITHUB_WORKSPACE/.beam-work"
+
+      - name: Abrir CLI y buscar BB
+        run: |
+          python3 scripts/instrument/apply_p08_cli_multiobs64.py --upstream-dir "$GITHUB_WORKSPACE/.beam-work/tesseract" --report "$GITHUB_WORKSPACE/.beam-work/cli.json"
+          cd "$GITHUB_WORKSPACE/.beam-work/tesseract"
+          bazel build //src:tesseract_trellis
+          cd "$GITHUB_WORKSPACE"
+          python3 scripts/find_p08_bb_circuits.py --upstream-dir "$GITHUB_WORKSPACE/.beam-work/tesseract" --output "$GITHUB_WORKSPACE/.beam-work/circuitos.tsv" --json "$GITHUB_WORKSPACE/.beam-work/circuitos.json"
+
+      - name: Repetir los mismos shots con 1024 y 2000
+        run: |
+          mkdir -p resultados_beam2000
+          python3 scripts/probar_beam_bb.py \
+            --binary "$GITHUB_WORKSPACE/.beam-work/tesseract/bazel-bin/src/tesseract_trellis" \
+            --upstream-dir "$GITHUB_WORKSPACE/.beam-work/tesseract" \
+            --selection "$GITHUB_WORKSPACE/.beam-work/circuitos.tsv" \
+            --out-dir resultados_beam2000 \
+            --shots 4 \
+            --beams 1024,2000 \
+            --timeout 1200
+
+      - name: Guardar
+        if: always()
+        run: |
+          cp "$GITHUB_WORKSPACE/.beam-work/circuitos.tsv" resultados_beam2000/circuitos.tsv 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/.beam-work/circuitos.json" resultados_beam2000/circuitos.json 2>/dev/null || true
+          printf 'run=%s\ncommit=%s\nupstream=%s\nbenchmark_valido=false\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" "024db1d3b5b038f565c476dd1b51885271f7b0bf" > resultados_beam2000/origen.txt
+          (
+            cd resultados_beam2000
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Subir
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trellis-beam2000-${{ github.run_id }}
+          path: resultados_beam2000/
+          if-no-files-found: error
+          retention-days: 30
