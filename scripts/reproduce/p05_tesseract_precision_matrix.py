@@ -27,6 +27,7 @@ profiles unless --allow-expensive-climbing is supplied.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import math
@@ -417,37 +418,55 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    # Compact CSV for quick comparison on Brigit.
-    lines = [
-        "circuit,profile,q,d,r,p,trials_per_shot,num_shots,num_errors,"
-        "num_low_confidence,confidence_rate,confident_error_rate,"
-        "conservative_failure_rate,conservative_round_failure_rate,"
-        "decoder_seconds_per_shot,wall_seconds"
-    ]
-    for r in all_results:
-        stats = r["stats"] or {}
-        meta = r["circuit_metadata"]
-        d = r["derived"]
-        fields = [
-            Path(r["circuit"]).name,
-            r["profile"],
-            meta["q"],
-            meta["distance"],
-            meta["rounds"],
-            meta["physical_rate"],
-            r["estimated_decoder_trials_per_shot"],
-            stats.get("num_shots"),
-            stats.get("num_errors"),
-            stats.get("num_low_confidence"),
-            d["confidence_rate"],
-            d["confident_error_rate"],
-            d["conservative_failure_rate"],
-            d["conservative_round_failure_rate"],
-            d["decoder_seconds_per_shot"],
-            r["wall_seconds"],
-        ]
-        lines.append(",".join("" if x is None else str(x) for x in fields))
-    (output_dir / "summary.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Compact CSV for quick comparison on Brigit. Use csv.writer because
+    # public circuit filenames contain commas (for example nkd=[[72,12,6]]).
+    csv_path = output_dir / "summary.csv"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "circuit",
+                "profile",
+                "q",
+                "d",
+                "r",
+                "p",
+                "trials_per_shot",
+                "num_shots",
+                "num_errors",
+                "num_low_confidence",
+                "confidence_rate",
+                "confident_error_rate",
+                "conservative_failure_rate",
+                "conservative_round_failure_rate",
+                "decoder_seconds_per_shot",
+                "wall_seconds",
+            ]
+        )
+        for r in all_results:
+            stats = r["stats"] or {}
+            meta = r["circuit_metadata"]
+            d = r["derived"]
+            writer.writerow(
+                [
+                    Path(r["circuit"]).name,
+                    r["profile"],
+                    meta["q"],
+                    meta["distance"],
+                    meta["rounds"],
+                    meta["physical_rate"],
+                    r["estimated_decoder_trials_per_shot"],
+                    stats.get("num_shots"),
+                    stats.get("num_errors"),
+                    stats.get("num_low_confidence"),
+                    d["confidence_rate"],
+                    d["confident_error_rate"],
+                    d["conservative_failure_rate"],
+                    d["conservative_round_failure_rate"],
+                    d["decoder_seconds_per_shot"],
+                    r["wall_seconds"],
+                ]
+            )
 
     return 0 if overall_ok else 1
 
