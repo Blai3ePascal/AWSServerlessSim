@@ -1,0 +1,77 @@
+name: Trellis q144 beam 2000
+
+on:
+  push:
+    branches:
+      - research/tesseract-trellis-degeneracy
+    paths:
+      - '.github/workflows/trellis-q144-beam2000.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Montar
+        run: |
+          bash scripts/build_and_test_tesseract_multiobs64.sh "$GITHUB_WORKSPACE/.q144"
+          python3 scripts/instrument/apply_p08_cli_multiobs64.py --upstream-dir "$GITHUB_WORKSPACE/.q144/tesseract" --report "$GITHUB_WORKSPACE/.q144/cli.json"
+          cd "$GITHUB_WORKSPACE/.q144/tesseract"
+          bazel build //src:tesseract_trellis
+      - name: Probar q144
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          root=Path(".q144/tesseract").resolve()
+          binary=root/"bazel-bin/src/tesseract_trellis"
+          out=Path("q144_resultados")
+          out.mkdir()
+          casos=[
+            ("BB144-X",940006,"testdata/bivariatebicyclecodes/r=12,d=12,p=0.001,noise=si1000,c=bivariate_bicycle_X,nkd=[[144,12,12]],q=288,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim"),
+            ("BB144-Z",940007,"testdata/bivariatebicyclecodes/r=12,d=12,p=0.001,noise=si1000,c=bivariate_bicycle_Z,nkd=[[144,12,12]],q=288,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim"),
+          ]
+          resumen={}
+          for nombre,seed,rel in casos:
+            resumen[nombre]={}
+            for beam in [1024,2000]:
+              d=out/nombre/f"beam_{beam}"
+              d.mkdir(parents=True)
+              stats=d/"stats.json"; preds=d/"predicciones.01"
+              cmd=[str(binary),"--circuit",str(root/rel),"--sample-num-shots","4","--sample-seed",str(seed),"--threads","1","--beam",str(beam),"--beam-eps","0","--ranking-mode","mass","--out",str(preds),"--out-format","01","--stats-out",str(stats)]
+              p=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=1200)
+              (d/"stdout.txt").write_text(p.stdout)
+              (d/"stderr.txt").write_text(p.stderr)
+              (d/"comando.txt").write_text(" ".join(cmd)+"\n")
+              if p.returncode: raise SystemExit(p.returncode)
+              s=json.loads(stats.read_text())
+              resumen[nombre][str(beam)]={"errores":s["num_errors"],"low_confidence":s["num_low_confidence"],"predicciones":preds.read_text().splitlines()}
+            a=resumen[nombre]["1024"]["predicciones"]; b=resumen[nombre]["2000"]["predicciones"]
+            resumen[nombre]["cambios_1024_2000"]=sum(x!=y for x,y in zip(a,b))
+          (out/"resumen.json").write_text(json.dumps(resumen,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(resumen,indent=2,sort_keys=True))
+          PY
+      - name: Hashes
+        if: always()
+        run: |
+          printf 'run=%s\ncommit=%s\nupstream=%s\nbenchmark_valido=false\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" "024db1d3b5b038f565c476dd1b51885271f7b0bf" > q144_resultados/origen.txt
+          (cd q144_resultados && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Subir
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trellis-q144-beam2000-${{ github.run_id }}
+          path: q144_resultados/
+          if-no-files-found: error
+          retention-days: 30
