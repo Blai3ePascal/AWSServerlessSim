@@ -1,0 +1,120 @@
+name: Tesseract P05 precision smoke
+
+on:
+  push:
+    branches:
+      - research/tesseract-precision-oct2026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tesseract-p05-precision-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  precision-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      UPSTREAM_SHA: e7c762eef24161e304ba6fccb856a05b41f88c39
+      BB_Q144: 'testdata/bivariatebicyclecodes/r=6,d=6,p=0.001,noise=si1000,c=bivariate_bicycle_X,nkd=[[72,12,6]],q=144,iscolored=True,A_poly=x^3+y+y^2,B_poly=y^3+x+x^2.stim'
+
+    steps:
+      - name: Checkout research harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned current Tesseract main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quantumlib/tesseract-decoder
+          ref: e7c762eef24161e304ba6fccb856a05b41f88c39
+          path: external/tesseract-decoder
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Verify revision
+        run: |
+          actual=$(git -C external/tesseract-decoder rev-parse HEAD)
+          echo "expected=$UPSTREAM_SHA"
+          echo "actual=$actual"
+          test "$actual" = "$UPSTREAM_SHA"
+
+      - name: Focused upstream correctness tests
+        working-directory: external/tesseract-decoder
+        run: |
+          bazel test --jobs=1 \
+            //src:tesseract_tests \
+            //src/py:multi_pass_bindings_test \
+            --test_output=errors
+
+      - name: Build optimized Tesseract CLI
+        working-directory: external/tesseract-decoder
+        run: bazel build -c opt //src:tesseract
+
+      - name: Run q144 upstream-longbeam smoke
+        run: |
+          rm -rf research/results/P05
+          mkdir -p research/results/P05
+          python3 scripts/reproduce/p05_tesseract_precision_matrix.py \
+            --tesseract-bin external/tesseract-decoder/bazel-bin/src/tesseract \
+            --circuit "$GITHUB_WORKSPACE/external/tesseract-decoder/$BB_Q144" \
+            --output-dir research/results/P05 \
+            --profiles upstream_longbeam \
+            --shots 2 \
+            --sample-seed 20261004 \
+            --threads 1 \
+            --timeout-seconds 600
+
+      - name: Validate result contract
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('research/results/P05/summary.json')
+          data = json.loads(p.read_text())
+          assert data['overall_ok'] is True
+          assert data['benchmark_valid'] is False
+          assert data['upstream_sha'] == 'e7c762eef24161e304ba6fccb856a05b41f88c39'
+          assert len(data['results']) == 1
+          r = data['results'][0]
+          assert r['profile'] == 'upstream_longbeam'
+          assert r['estimated_decoder_trials_per_shot'] == 21
+          assert r['stats_match_expected_configuration'] is True
+          s = r['stats']
+          assert s['det_beam'] == 20
+          assert s['beam_climbing'] is True
+          assert s['no_revisit_dets'] is True
+          assert s['pqlimit'] == 1_000_000
+          assert s['num_det_orders'] == 21
+          assert s['det_order_seed'] == 2_384_753
+          assert s['num_shots'] == 2
+          print(json.dumps(r['derived'], indent=2, sort_keys=True))
+          PY
+
+      - name: Add provenance and checksums
+        if: always()
+        run: |
+          mkdir -p research/results/P05
+          cp research/phases/P05_PRECISION_PLATEAU.md research/results/P05/P05_PRECISION_PLATEAU.md
+          cp scripts/reproduce/p05_tesseract_precision_matrix.py research/results/P05/p05_tesseract_precision_matrix.py
+          printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\nbenchmark_valid=false\n' \
+            "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" "$UPSTREAM_SHA" \
+            > research/results/P05/github-run.txt
+          find research/results/P05 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > research/results/P05/SHA256SUMS
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-p05-precision-evidence-${{ github.run_id }}
+          path: research/results/P05/
+          if-no-files-found: error
+          retention-days: 30
