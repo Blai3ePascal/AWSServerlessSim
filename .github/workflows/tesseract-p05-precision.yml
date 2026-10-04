@@ -104,11 +104,23 @@ jobs:
           mkdir -p research/results/P05
           cp research/phases/P05_PRECISION_PLATEAU.md research/results/P05/P05_PRECISION_PLATEAU.md
           cp scripts/reproduce/p05_tesseract_precision_matrix.py research/results/P05/p05_tesseract_precision_matrix.py
+          cp scripts/reproduce/p05_evidence_contract_test.py research/results/P05/p05_evidence_contract_test.py
           printf 'harness_commit=%s\nharness_ref=%s\nrun_id=%s\nupstream_commit=%s\nbenchmark_valid=false\n' \
             "$GITHUB_SHA" "$GITHUB_REF" "$GITHUB_RUN_ID" "$UPSTREAM_SHA" \
             > research/results/P05/github-run.txt
-          find research/results/P05 -type f ! -name SHA256SUMS -print0 \
-            | sort -z | xargs -0 sha256sum > research/results/P05/SHA256SUMS
+          (
+            cd research/results/P05
+            find . -type f ! -name SHA256SUMS -print0 \
+              | sort -z | xargs -0 sha256sum > SHA256SUMS
+          )
+
+      - name: Validate portable evidence contract
+        if: always()
+        run: |
+          tmp_dir="$(mktemp -d)"
+          cp -a research/results/P05/. "$tmp_dir/"
+          python3 scripts/reproduce/p05_evidence_contract_test.py --artifact-dir "$tmp_dir"
+          rm -rf "$tmp_dir"
 
       - name: Upload evidence artifact
         if: always()
