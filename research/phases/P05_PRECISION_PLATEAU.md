@@ -112,10 +112,12 @@ long-beam profiles still plateau.
 
 The native CLI requires canonical detector-basis tags for multi-pass. The
 Python wrapper can infer supported X/Z metadata / the Chromobius
-fourth-coordinate convention, but Sinter low-confidence reporting is still the
-subject of open issue #297 / PR #300. Until that is resolved, conservative
-logical-rate measurements should continue to use a path that preserves
-low-confidence explicitly.
+fourth-coordinate convention. Current multi-pass code propagates low-confidence
+through Sinter's discard byte, but issue #297 remains relevant to the older
+monolithic/file-decoder paths; in particular, decode_via_files has no
+decoder-controlled discard channel. For this campaign, conservative logical-rate
+measurements therefore stay on the native CLI stats path, where
+num_low_confidence is explicit.
 
 ## GO / NO-GO
 
